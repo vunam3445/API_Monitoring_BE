@@ -11,15 +11,21 @@ import java.util.UUID;
 public class Monitor {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
     @ManyToOne @JoinColumn(name = "user_id")
     private User user;
+
     private String name;
     @Column(columnDefinition = "TEXT")
     private String url;
     private String method = "GET";
+
     @Column(columnDefinition = "jsonb")
-    private String headers; // Lưu JSON headers
-    private Integer checkInterval; // Tính bằng giây
+    private String headers;
+
+    private Integer checkInterval;
     private Boolean isActive = true;
+    private Boolean isMuted = false; // Tạm dừng gửi alert
     private String lastStatus = "UNKNOWN";
+    private LocalDateTime lastCheckAt;
 }

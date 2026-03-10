@@ -10,8 +10,11 @@ import java.util.UUID;
 public class AlertConfig {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
     @ManyToOne @JoinColumn(name = "monitor_id")
     private Monitor monitor;
+
     private String type; // EMAIL, TELEGRAM, SLACK
-    private String destination; // Email hoặc Chat ID
+    private String destination;
+    private Boolean isEnabled = true;
 }

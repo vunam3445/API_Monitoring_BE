@@ -11,8 +11,17 @@ import java.util.UUID;
 public class SubscriptionPlan {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
     private String name;
+    private String description;
     private Double price;
-    private Integer maxMonitors; // Giới hạn số lượng API được phép tạo
-    private Integer minInterval; // Tần suất tối thiểu (vd: Pro mới được 30s)
+    private String currency = "USD";
+
+    private Integer maxMonitors;
+    private Integer minInterval;
+
+    @Column(columnDefinition = "jsonb")
+    private String features; // Lưu: {"custom_reports": true, "sms_alerts": false}
+
+    private Boolean isActive = true;
 }

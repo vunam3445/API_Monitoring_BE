@@ -10,12 +10,13 @@ import java.time.LocalDateTime;
 })
 @Data
 public class UptimeLog {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "monitor_id")
     private Monitor monitor;
+
     private Integer statusCode;
     private Integer responseTimeMs;
     private Boolean isUp;
