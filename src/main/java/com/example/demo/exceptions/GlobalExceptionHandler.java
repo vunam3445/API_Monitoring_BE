@@ -21,9 +21,9 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errors);
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<String> handleRuntimeException(RuntimeException ex) {
-        return ResponseEntity.badRequest().body(ex.getMessage());
+    @ExceptionHandler(BaseException.class)
+    public ResponseEntity<String> handleBaseException(BaseException ex) {
+        return ResponseEntity.status(ex.getHttpStatus()).body(ex.getMessage());
     }
 
 }

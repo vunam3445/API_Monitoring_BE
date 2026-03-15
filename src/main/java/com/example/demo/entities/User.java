@@ -4,13 +4,19 @@ import com.example.demo.enums.UserRole;
 import com.example.demo.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.Data;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
 @Table(name = "users")
 @Data
-public class User {
+public class User implements UserDetails {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
@@ -39,4 +45,45 @@ public class User {
 
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt = LocalDateTime.now();
+
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        // Chuyển Enum UserRole thành SimpleGrantedAuthority mà Spring Security hiểu được
+        return List.of(new SimpleGrantedAuthority(role.name()));
+    }
+
+    // 2. Trả về mật khẩu dùng để xác thực
+    @Override
+    public String getPassword() {
+        return this.passwordHash;
+    }
+
+    // 3. Trả về định danh (Email)
+    @Override
+    public String getUsername() {
+        return this.email;
+    }
+
+    // 4. Các thiết lập trạng thái tài khoản (Tạm thời để true hết)
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        // Bạn có thể logic hóa chỗ này: return this.status != UserStatus.SUSPENDED;
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
 }

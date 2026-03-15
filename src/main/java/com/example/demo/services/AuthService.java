@@ -4,9 +4,14 @@ import com.example.demo.dto.request.GoogleLoginRequest;
 import com.example.demo.dto.request.LoginRequest;
 import com.example.demo.dto.request.RegisterRequest;
 import com.example.demo.dto.response.LoginResponse;
+import com.example.demo.entities.Subscription;
+import com.example.demo.entities.SubscriptionPlan;
 import com.example.demo.entities.User;
 import com.example.demo.enums.UserRole;
 import com.example.demo.enums.UserStatus;
+import com.example.demo.exceptions.*;
+import com.example.demo.repositories.subscription.SubscriptionRepository;
+import com.example.demo.repositories.subscriptionPlan.SubscriptionPlanRepository;
 import com.example.demo.repositories.user.UserRepository;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
@@ -25,6 +30,8 @@ import java.util.UUID;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final SubscriptionPlanRepository planRepository;
+    private final SubscriptionRepository subscriptionRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
@@ -32,17 +39,20 @@ public class AuthService {
     private String googleClientId;
 
     public AuthService(UserRepository userRepository,
+                       SubscriptionPlanRepository planRepository,
+                       SubscriptionRepository subscriptionRepository,
                        BCryptPasswordEncoder passwordEncoder,
                        JwtService jwtService) {
         this.userRepository = userRepository;
+        this.planRepository = planRepository;
+        this.subscriptionRepository = subscriptionRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
-
     @Transactional
     public User register(RegisterRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new RuntimeException("Email này đã được đăng ký trong hệ thống.");
+            throw new EmailAlreadyExistsException("Email này đã được đăng ký trong hệ thống.");
         }
 
         User user = new User();
@@ -56,22 +66,23 @@ public class AuthService {
         user.setStatus(UserStatus.ACTIVE);
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
-
-        return userRepository.save(user);
+        User savedUser = userRepository.save(user);
+        createDefaultFreeSubscription(savedUser);
+        return savedUser;
     }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("Email hoặc mật khẩu không chính xác"));
+                .orElseThrow(() -> new AuthenticationException("Email hoặc mật khẩu không chính xác"));
 
         // Kiểm tra trạng thái tài khoản (DB mới có status)
         if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new RuntimeException("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ hỗ trợ.");
+            throw new AccountSuspendedException("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ hỗ trợ.");
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("Email hoặc mật khẩu không chính xác");
+            throw new AuthenticationException("Email hoặc mật khẩu không chính xác");
         }
 
         return generateLoginResponse(user);
@@ -82,28 +93,33 @@ public class AuthService {
         GoogleIdToken.Payload payload = verifyGoogleToken(request.getCredential());
         String email = payload.getEmail();
 
-        User user = userRepository.findByEmail(email).orElseGet(() -> {
-            // Tạo user mới nếu chưa tồn tại
-            User newUser = new User();
-            newUser.setEmail(email);
-            newUser.setRole(UserRole.USER);
-            newUser.setStatus(UserStatus.ACTIVE);
-            newUser.setPlanType("FREE");
-            return newUser;
-        });
+        boolean isNewUser = false;
+        User user = userRepository.findByEmail(email).orElse(null);
 
-        // Kiểm tra status nếu là user cũ
-        if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new RuntimeException("Tài khoản liên kết Google của bạn đã bị khóa.");
+        if (user == null) {
+            user = new User();
+            user.setEmail(email);
+            user.setRole(UserRole.USER);
+            user.setStatus(UserStatus.ACTIVE);
+            user.setProvider("google");
+            user.setProviderId(payload.getSubject());
+            isNewUser = true;
         }
 
-        // Cập nhật thông tin từ Google
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            throw new AccountSuspendedException("Tài khoản liên kết Google của bạn đã bị khóa.");
+        }
+
         user.setFullName((String) payload.get("name"));
         user.setAvatarUrl((String) payload.get("picture"));
-        user.setProvider("google");
-        user.setProviderId(payload.getSubject()); // Subject là ID duy nhất của Google
+        User savedUser = userRepository.save(user);
 
-        return generateLoginResponse(user);
+        // Nếu là người dùng mới đăng nhập Google lần đầu, tạo gói Free cho họ
+        if (isNewUser) {
+            createDefaultFreeSubscription(savedUser);
+        }
+
+        return generateLoginResponse(savedUser);
     }
 
     /**
@@ -136,17 +152,17 @@ public class AuthService {
     @Transactional
     public String refreshAccessToken(String refreshToken) {
         User user = userRepository.findByRefreshToken(refreshToken)
-                .orElseThrow(() -> new RuntimeException("Refresh Token không hợp lệ"));
+                .orElseThrow(() -> new InvalidRefreshTokenException("Refresh Token không hợp lệ"));
 
         if (user.getRefreshTokenExpiry().isBefore(LocalDateTime.now())) {
             user.setRefreshToken(null);
             userRepository.save(user);
-            throw new RuntimeException("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại");
+            throw new ExpiredRefreshTokenException("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại");
         }
 
         // Vẫn check status khi refresh token để đảm bảo nếu vừa bị khóa thì ko dùng tiếp được
         if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new RuntimeException("Tài khoản đã bị khóa.");
+            throw new AccountSuspendedException("Tài khoản đã bị khóa.");
         }
 
         return jwtService.generateToken(user);
@@ -162,10 +178,27 @@ public class AuthService {
             if (idToken != null) {
                 return idToken.getPayload();
             } else {
-                throw new RuntimeException("Google Token không hợp lệ");
+                throw new InvalidGoogleTokenException("Google Token không hợp lệ");
             }
         } catch (Exception e) {
-            throw new RuntimeException("Lỗi khi xác thực Google Token: " + e.getMessage());
+            throw new GoogleAuthenticationException("Lỗi khi xác thực Google Token: " + e.getMessage());
         }
+    }
+
+    private void createDefaultFreeSubscription(User user) {
+        SubscriptionPlan freePlan = planRepository.findByName("FREE")
+                .orElseThrow(() -> new RuntimeException("Lỗi hệ thống: Không tìm thấy cấu hình gói FREE."));
+
+        Subscription subscription = new Subscription();
+        subscription.setUser(user);
+        subscription.setPlan(freePlan);
+        subscription.setStartDate(LocalDateTime.now());
+        // Gói Free mặc định cho dùng "vĩnh viễn" (ví dụ 100 năm) hoặc set theo chính sách
+        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(100));
+        subscription.setBillingCycle("LIFETIME");
+        subscription.setStatus("ACTIVE");
+        subscription.setPaymentStatus("PAID");
+
+        subscriptionRepository.save(subscription);
     }
 }

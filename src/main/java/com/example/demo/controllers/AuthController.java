@@ -30,7 +30,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {// requestbody map dữ liệu từ body trong request của các phương thức post, put, để chuyển đổi thành registerReeuest
         User user = authService.register(request);
 
         // Không nên trả về object User (vì có password_hash)
