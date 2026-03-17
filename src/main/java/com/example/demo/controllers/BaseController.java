@@ -1,5 +1,6 @@
 package com.example.demo.controllers;
 
+import com.example.demo.security.annotations.IsAdmin;
 import com.example.demo.services.BaseService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,8 +26,6 @@ public abstract class BaseController<T, ID, CREQ, UREQ, RES> {
 
     @PostMapping
     public ResponseEntity<RES> create(@RequestBody CREQ request) {
-        // BaseService mới đã tự biết EntityClass thông qua getEntityClass() bên Service
-        // nên ở đây ta không cần truyền vào nữa
         return ResponseEntity.ok(service.create(request));
     }
 
@@ -35,10 +34,6 @@ public abstract class BaseController<T, ID, CREQ, UREQ, RES> {
         return ResponseEntity.ok(service.findById(id));
     }
 
-    @GetMapping
-    public ResponseEntity<List<RES>> getAll() {
-        return ResponseEntity.ok(service.findAll());
-    }
 
     @GetMapping("/paging")
     public ResponseEntity<Page<RES>> getAll(Pageable pageable) {

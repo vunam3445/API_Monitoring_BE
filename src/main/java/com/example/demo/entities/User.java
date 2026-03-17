@@ -49,10 +49,9 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // Chuyển Enum UserRole thành SimpleGrantedAuthority mà Spring Security hiểu được
-        return List.of(new SimpleGrantedAuthority(role.name()));
+        // Phải có tiền tố ROLE_
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
-
     // 2. Trả về mật khẩu dùng để xác thực
     @Override
     public String getPassword() {
@@ -74,7 +73,7 @@ public class User implements UserDetails {
     @Override
     public boolean isAccountNonLocked() {
         // Bạn có thể logic hóa chỗ này: return this.status != UserStatus.SUSPENDED;
-        return true;
+        return this.status != UserStatus.SUSPENDED;
     }
 
     @Override
@@ -84,6 +83,6 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return this.status == UserStatus.ACTIVE;
     }
 }

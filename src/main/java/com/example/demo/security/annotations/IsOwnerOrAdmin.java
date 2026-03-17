@@ -1,0 +1,15 @@
+package com.example.demo.security.annotations;
+
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@PreAuthorize("hasRole('ADMIN') or @ss.isOwner(#id, #entityName)")
+public @interface IsOwnerOrAdmin {
+    String entityName(); // Để xác định đang check cho table nào
+}
