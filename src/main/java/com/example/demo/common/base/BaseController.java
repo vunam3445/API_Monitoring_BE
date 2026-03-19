@@ -44,4 +44,5 @@ public abstract class BaseController<CREQ, UREQ, RES, ID> {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
+
 }

@@ -38,4 +38,5 @@ public class SubscriptionPlanController
     public ResponseEntity<PlanResponse> getById(@PathVariable UUID id) {
         return super.getById(id);
     }
+   
 }

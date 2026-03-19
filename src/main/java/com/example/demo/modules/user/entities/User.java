@@ -45,7 +45,8 @@ public class User implements UserDetails {
 
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt = LocalDateTime.now();
-
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private UserSetting settings;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

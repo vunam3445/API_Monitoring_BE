@@ -9,12 +9,14 @@ import com.example.demo.modules.auth.dto.LoginResponse;
 import com.example.demo.modules.subscription.entities.Subscription;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.entities.User;
+import com.example.demo.modules.user.entities.UserSetting;
 import com.example.demo.modules.user.enums.UserRole;
 import com.example.demo.modules.user.enums.UserStatus;
 import com.example.demo.common.exceptions.*;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
 import com.example.demo.modules.user.repositories.UserRepository;
+import com.example.demo.modules.user.repositories.UserSettingRepository;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -36,6 +38,7 @@ public class AuthService {
     private final SubscriptionRepository subscriptionRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final UserSettingRepository userSettingRepository;
 
     @Value("${google.client-id}")
     private String googleClientId;
@@ -44,12 +47,14 @@ public class AuthService {
                        SubscriptionPlanRepository planRepository,
                        SubscriptionRepository subscriptionRepository,
                        BCryptPasswordEncoder passwordEncoder,
+                       UserSettingRepository userSettingRepository,
                        JwtService jwtService) {
         this.userRepository = userRepository;
         this.planRepository = planRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.userSettingRepository = userSettingRepository;
     }
     @Transactional
     public User register(RegisterRequest request) {
@@ -68,10 +73,9 @@ public class AuthService {
         user.setStatus(UserStatus.ACTIVE);
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
-        User savedUser = userRepository.save(user);
-        createDefaultFreeSubscription(savedUser);
-        return savedUser;
-    }
+        createUserDefaultSettings(user);
+        createDefaultFreeSubscription(user);
+        return userRepository.save(user);    }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -114,13 +118,13 @@ public class AuthService {
 
         user.setFullName((String) payload.get("name"));
         user.setAvatarUrl((String) payload.get("picture"));
-        User savedUser = userRepository.save(user);
 
         // Nếu là người dùng mới đăng nhập Google lần đầu, tạo gói Free cho họ
         if (isNewUser) {
-            createDefaultFreeSubscription(savedUser);
+            createUserDefaultSettings(user);
+            createDefaultFreeSubscription(user);
         }
-
+        User savedUser = userRepository.save(user);
         return generateLoginResponse(savedUser);
     }
 
@@ -202,5 +206,23 @@ public class AuthService {
         subscription.setPaymentStatus("PAID");
 
         subscriptionRepository.save(subscription);
+    }
+
+    private void createUserDefaultSettings(User user) {
+        UserSetting settings = new UserSetting();
+
+        // Thiết lập liên kết 2 chiều (Rất quan trọng để tránh lỗi null identifier)
+        settings.setUser(user);
+        user.setSettings(settings);
+
+        settings.setDefaultTimeoutMs(5000);
+        settings.setDefaultLatencyMs(300);
+        settings.setDefaultErrorRate(5);
+        settings.setDefaultFailCount(3);
+        settings.setEmailAlertsEnabled(true);
+        settings.setCheckInterval(300); // 5 phút
+        settings.setRetryAttempts(2);
+
+        // Không gọi userSettingRepository.save(settings);
     }
 }
