@@ -38,7 +38,7 @@ public abstract class BaseService<T, ID, CREQ, UREQ, RES> implements ICrudServic
     /**
      * Xóa cache object theo key cụ thể
      */
-    private void evictObjectCache(ID id) {
+    protected void evictObjectCache(ID id) {
         String key = CACHE_OBJECT + "::" + getObjectName() + ":" + id;
         cacheService.evict(key);
     }
@@ -46,7 +46,7 @@ public abstract class BaseService<T, ID, CREQ, UREQ, RES> implements ICrudServic
     /**
      * Xóa toàn bộ cache danh sách
      */
-    private void evictListCache() {
+    protected void evictListCache() {
         cacheService.evictByPrefix(CACHE_LIST + "::");
     }
 

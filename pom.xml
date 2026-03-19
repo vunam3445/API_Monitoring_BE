@@ -166,9 +166,10 @@
 		<!-- Dotenv support for Sparking Boot -->
 		<dependency>
 			<groupId>me.paulschwarz</groupId>
-			<artifactId>dotenv-java-starter</artifactId>
-			<version>0.3.0</version>
+			<artifactId>springboot4-dotenv</artifactId>
+			<version>5.1.0</version>
 		</dependency>
+
 	</dependencies>
 
 	<build>

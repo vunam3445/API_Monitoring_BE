@@ -38,7 +38,7 @@ public class User implements UserDetails {
 
     private String planType = "FREE";
     private String avatarUrl;
-
+    private String avatarPublicId;// để xóa trên cloudinary 
     @Column(unique = true)
     private String refreshToken;
     private LocalDateTime refreshTokenExpiry;

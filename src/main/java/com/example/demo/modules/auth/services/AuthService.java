@@ -71,6 +71,8 @@ public class AuthService {
         // Cập nhật theo DB mới: Sử dụng Enum
         user.setRole(UserRole.USER);
         user.setStatus(UserStatus.ACTIVE);
+        user.setAvatarUrl("https://res.cloudinary.com/dgcb0zg6s/image/upload/v1773922273/default-avatar_xooaz4.png");
+        user.setAvatarPublicId("default-avatar_xooaz4");
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
         createUserDefaultSettings(user);

@@ -8,9 +8,7 @@ import com.example.demo.modules.user.dto.UserResponse;
 import com.example.demo.modules.user.services.IUserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
@@ -24,6 +22,17 @@ public class UserController extends BaseController<RegisterRequest, UpdateUserRe
     @Override
     public ResponseEntity<UserResponse> create(@RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build();
+    }
+    @Override
+    public ResponseEntity<Void> delete(UUID id) {
+        return ResponseEntity.noContent().build();
+    }
+    @Override
+    @PutMapping(value = "/{id}", consumes = {"multipart/form-data"})
+    public ResponseEntity<UserResponse> update(
+            @PathVariable UUID id,
+            @ModelAttribute UpdateUserRequest request) {
+        return ResponseEntity.ok(service.update(id, request));
     }
 
 }
