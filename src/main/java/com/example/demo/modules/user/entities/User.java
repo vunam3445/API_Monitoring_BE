@@ -1,5 +1,7 @@
 package com.example.demo.modules.user.entities;
 
+import com.example.demo.modules.subscription.entities.Subscription;
+import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.enums.UserRole;
 import com.example.demo.modules.user.enums.UserStatus;
 import jakarta.persistence.*;
@@ -47,7 +49,9 @@ public class User implements UserDetails {
     private LocalDateTime createdAt = LocalDateTime.now();
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private UserSetting settings;
-
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plan_id")
+    private SubscriptionPlan subscriptionPlan;
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         // Phải có tiền tố ROLE_
