@@ -9,7 +9,6 @@ import java.lang.annotation.Target;
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-@PreAuthorize("hasRole('ADMIN') or @ss.isOwner(#id, #entityName)")
 public @interface IsOwnerOrAdmin {
     String entityName(); // Để xác định đang check cho table nào
 }

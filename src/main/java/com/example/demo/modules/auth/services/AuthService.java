@@ -71,6 +71,8 @@ public class AuthService {
         // Cập nhật theo DB mới: Sử dụng Enum
         user.setRole(UserRole.USER);
         user.setStatus(UserStatus.ACTIVE);
+        user.setAvatarUrl("https://res.cloudinary.com/dgcb0zg6s/image/upload/v1773922273/default-avatar_xooaz4.png");
+        user.setAvatarPublicId("default-avatar_xooaz4");
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
         createUserDefaultSettings(user);
@@ -195,17 +197,9 @@ public class AuthService {
         SubscriptionPlan freePlan = planRepository.findByName("FREE")
                 .orElseThrow(() -> new RuntimeException("Lỗi hệ thống: Không tìm thấy cấu hình gói FREE."));
 
-        Subscription subscription = new Subscription();
-        subscription.setUser(user);
-        subscription.setPlan(freePlan);
-        subscription.setStartDate(LocalDateTime.now());
-        // Gói Free mặc định cho dùng "vĩnh viễn" (ví dụ 100 năm) hoặc set theo chính sách
-        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(100));
-        subscription.setBillingCycle("LIFETIME");
-        subscription.setStatus("ACTIVE");
-        subscription.setPaymentStatus("PAID");
-
-        subscriptionRepository.save(subscription);
+        // Cập nhật theo yêu cầu: Bỏ insert vào bảng subscriptions khi khởi tạo
+        // Chỉ lưu định danh gói cước trực tiếp qua khóa ngoại plan_id vào User
+        user.setSubscriptionPlan(freePlan);
     }
 
     private void createUserDefaultSettings(User user) {

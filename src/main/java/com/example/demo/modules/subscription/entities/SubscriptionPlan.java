@@ -21,6 +21,7 @@ import java.util.UUID;
     private UUID id;
 
     private String name;
+    @Column(columnDefinition = "TEXT")
     private String description;
     private Double price;
     private String currency = "USD";
