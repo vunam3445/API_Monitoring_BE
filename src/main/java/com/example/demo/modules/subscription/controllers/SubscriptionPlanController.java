@@ -11,6 +11,7 @@ import com.example.demo.modules.subscription.services.ISubscriptionPlanService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,6 +38,12 @@ public class SubscriptionPlanController
     @IsAuthenticated
     public ResponseEntity<PlanResponse> getById(@PathVariable UUID id) {
         return super.getById(id);
+    }
+
+    @GetMapping("/user/{userId}")
+    @IsAuthenticated
+    public ResponseEntity<java.util.List<PlanResponse>> getAllWithUserStatus(@PathVariable UUID userId) {
+        return ResponseEntity.ok(((ISubscriptionPlanService)service).findAllWithUserStatus(userId));
     }
    
 }

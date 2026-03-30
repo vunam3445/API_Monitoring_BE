@@ -33,14 +33,18 @@ public class SecurityService {
         try {
             // JPQL: Truy vấn động dựa trên entityType. Giả định Entity có field 'user'
             // Đối với UserSetting, field ID là 'userId', nhưng ta sẽ dùng mapping linh hoạt
-            String queryString = String.format(
-                    "SELECT COUNT(e) FROM %s e WHERE (e.id = :targetId OR (KEY(e) IS NULL AND e.userId = :targetId)) AND e.user.id = :userId",
-                    entityType
-            );
-            
-            // Một số entity có thể dùng field khác hoặc tên ID khác, tạm thời dùng standard:
-            if (entityType.equals("UserSetting")) {
+            // Lên câu truy vấn chuẩn xác tùy thuộc vào cách Entity mapping cột userId
+            String queryString;
+
+            if (entityType.equalsIgnoreCase("UserSetting")) {
+                // UserSetting mapping qua thuộc tính 'user' (@OneToOne / @ManyToOne)
                 queryString = "SELECT COUNT(e) FROM UserSetting e WHERE e.userId = :targetId AND e.user.id = :userId";
+            } else {
+                // Monitor và nhiều Entity khác mapping trực tiếp qua UUID userId
+                queryString = String.format(
+                        "SELECT COUNT(e) FROM %s e WHERE e.id = :targetId AND e.userId = :userId",
+                        entityType
+                );
             }
 
             Long count = entityManager.createQuery(queryString, Long.class)

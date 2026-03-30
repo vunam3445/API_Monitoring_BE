@@ -1,0 +1,120 @@
+package com.example.demo.modules.monitor.workers;
+
+import com.example.demo.modules.monitor.entities.Monitor;
+import com.example.demo.modules.monitor.execution.ApiExecutionService;
+import com.example.demo.modules.monitor.lock.DistributedLockService;
+import com.example.demo.modules.monitor.messaging.MonitorExecutionMessage;
+import com.example.demo.modules.monitor.messaging.MonitorMQConfig;
+import com.example.demo.modules.monitor.repositories.MonitorRepository;
+import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
+import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Worker nhận job từ RabbitMQ và thực thi kiểm tra API.
+ *
+ * Luồng xử lý:
+ * 1. Nhận message chứa monitorId từ queue.
+ * 2. Query Monitor entity từ DB (lấy config mới nhất).
+ * 3. Gọi ApiExecutionService để thực thi HTTP request.
+ * 4. Lưu kết quả vào bảng UptimeLogs.
+ * 5. Cập nhật trạng thái gần nhất (last_status, last_latency, next_check_at)
+ * trên Monitor.
+ * 6. Giải phóng Redis lock.
+ *
+ * Single Responsibility: Worker CHỈ orchestrate luồng, logic gọi API nằm trong
+ * ApiExecutionService.
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class MonitorWorker {
+
+    private final MonitorRepository monitorRepository;
+    private final UptimeLogsRepository uptimeLogsRepository;
+    private final ApiExecutionService apiExecutionService;
+    private final DistributedLockService lockService;
+    private final com.example.demo.common.cache.ICacheService cacheService;
+
+    @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
+    @Transactional
+    public void processMonitorJob(MonitorExecutionMessage message) {
+        String monitorId = message.getMonitorId();
+        log.info("Received execution job for monitor: {} (scheduled at: {})",
+                monitorId, message.getScheduledAt());
+
+        try {
+            // 1. Lấy Monitor từ DB (dữ liệu mới nhất)
+            Optional<Monitor> optionalMonitor = monitorRepository.findById(UUID.fromString(monitorId));
+            if (optionalMonitor.isEmpty()) {
+                log.warn("Monitor not found: {}. Skipping.", monitorId);
+                return;
+            }
+
+            Monitor monitor = optionalMonitor.get();
+
+            // Kiểm tra monitor vẫn active (có thể bị tắt giữa lúc schedule và execute)
+            if (!Boolean.TRUE.equals(monitor.getIsActive())) {
+                log.info("Monitor {} is no longer active. Skipping.", monitorId);
+                return;
+            }
+
+            // 2. Thực thi gọi API
+            log.info("Executing API check for monitor: {} ({})", monitor.getName(), monitor.getUrl());
+            UptimeLogs result = apiExecutionService.execute(monitor);
+
+            // 3. Lưu kết quả vào bảng uptime_logs
+            uptimeLogsRepository.save(result);
+            log.info("Saved uptime log for monitor: {} | isUp={} | statusCode={} | responseTime={}ms",
+                    monitor.getName(), result.getIsUp(), result.getStatusCode(), result.getResponseTimeMs());
+
+            // 4. Cập nhật trạng thái gần nhất trên Monitor entity
+            updateMonitorStatus(monitor, result);
+
+        } catch (Exception e) {
+            log.error("Error processing monitor job: {}", monitorId, e);
+        } finally {
+            // 5. Luôn giải phóng lock sau khi xử lý xong
+            lockService.unlock(monitorId);
+        }
+    }
+
+    /**
+     * Cập nhật các trường trạng thái gần nhất trên Monitor.
+     * Giúp dashboard hiển thị nhanh mà không cần query bảng uptime_logs.
+     */
+    private void updateMonitorStatus(Monitor monitor, UptimeLogs result) {
+        // Cập nhật trạng thái gần nhất
+        monitor.setLastStatus(result.getIsUp() ? "Healthy" : "Down");
+        monitor.setLastLatencyMs(result.getResponseTimeMs());
+        monitor.setLastCheckAt(LocalDateTime.now());
+        monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
+
+        // Cập nhật consecutive failures
+        if (Boolean.TRUE.equals(result.getIsUp())) {
+            monitor.setConsecutiveFailures(0);
+        } else {
+            int current = monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0;
+            monitor.setConsecutiveFailures(current + 1);
+        }
+
+        // Tính nextCheckAt dựa trên checkInterval
+        int intervalSeconds = monitor.getCheckInterval() != null ? monitor.getCheckInterval() : 300; // default 5 phút
+        monitor.setNextCheckAt(LocalDateTime.now().plusSeconds(intervalSeconds));
+
+        monitorRepository.save(monitor);
+
+        // Xóa Cache để hệ thống biết bảng dữ liệu đã có thay đổi (chống stale cache)
+        cacheService.evictByPrefix("api-monitoring:api:list::");
+        cacheService.evict("api-monitoring:api:object::monitor:" + monitor.getId());
+        cacheService.evictByPrefix("api-monitoring:uptime-logs::");
+    }
+}
