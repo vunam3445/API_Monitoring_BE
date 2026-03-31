@@ -178,9 +178,10 @@ public class WebClientApiExecutionService implements ApiExecutionService {
      */
     private void evaluateAssertions(Monitor monitor, UptimeLogs uptimeLogs) {
         boolean isUp = true;
+        String assertionStatus = "PASSED";
         StringBuilder assertionMessage = new StringBuilder();
 
-        // 1. Kiểm tra status code
+        // 1. Kiểm tra status code -> Nếu sai mã code thì tính là DOWN (isUp = false)
         if (monitor.getExpectedStatusCodes() != null && !monitor.getExpectedStatusCodes().isBlank()) {
             Set<Integer> expectedCodes = Arrays.stream(monitor.getExpectedStatusCodes().split(","))
                     .map(String::trim)
@@ -189,16 +190,20 @@ public class WebClientApiExecutionService implements ApiExecutionService {
 
             if (!expectedCodes.contains(uptimeLogs.getStatusCode())) {
                 isUp = false;
+                assertionStatus = "FAILED";
                 assertionMessage.append(String.format(
                         "Status code %d is not in expected codes %s. ",
                         uptimeLogs.getStatusCode(), expectedCodes));
             }
         }
 
-        // 2. Kiểm tra response time
+        // 2. Kiểm tra response time -> Nếu chậm thì chỉ cảnh báo WARNING (vẫn isUp = true)
         if (monitor.getMaxResponseTimeMs() != null && uptimeLogs.getResponseTimeMs() != null) {
             if (uptimeLogs.getResponseTimeMs() > monitor.getMaxResponseTimeMs()) {
-                isUp = false;
+                // Nếu chưa bị FAILED bởi status code thì mới đặt là WARNING
+                if (assertionStatus.equals("PASSED")) {
+                    assertionStatus = "WARNING";
+                }
                 assertionMessage.append(String.format(
                         "Response time %dms exceeded max %dms. ",
                         uptimeLogs.getResponseTimeMs(), monitor.getMaxResponseTimeMs()));
@@ -206,7 +211,7 @@ public class WebClientApiExecutionService implements ApiExecutionService {
         }
 
         uptimeLogs.setIsUp(isUp);
-        uptimeLogs.setAssertionStatus(isUp ? "PASSED" : "FAILED");
+        uptimeLogs.setAssertionStatus(assertionStatus);
         uptimeLogs.setAssertionMessage(
                 assertionMessage.isEmpty() ? "All assertions passed" : assertionMessage.toString().trim());
     }

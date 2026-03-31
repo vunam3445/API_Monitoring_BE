@@ -93,13 +93,21 @@ public class MonitorWorker {
      */
     private void updateMonitorStatus(Monitor monitor, UptimeLogs result) {
         // Cập nhật trạng thái gần nhất
-        monitor.setLastStatus(result.getIsUp() ? "Healthy" : "Down");
+        if (!result.getIsUp()) {
+            monitor.setLastStatus("Down");
+        } else if ("WARNING".equals(result.getAssertionStatus())) {
+            monitor.setLastStatus("Warning");
+        } else {
+            monitor.setLastStatus("Healthy");
+        }
+        
         monitor.setLastLatencyMs(result.getResponseTimeMs());
         monitor.setLastCheckAt(LocalDateTime.now());
         monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
 
         // Cập nhật consecutive failures
         if (Boolean.TRUE.equals(result.getIsUp())) {
+            // Bao gồm cả Healthy và Warning đều tính là Up, reset số lần fail liên tiếp
             monitor.setConsecutiveFailures(0);
         } else {
             int current = monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0;

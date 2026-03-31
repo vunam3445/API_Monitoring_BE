@@ -5,6 +5,9 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -38,8 +41,9 @@ public class UptimeLogs {
      * Cho phép truy xuất thông tin của API trực tiếp từ log (ví dụ: lấy tên, method).
      * Hỗ trợ join trong specification khi filter.
      */
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "monitor_id", referencedColumnName = "id")
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Monitor monitor;
 
     /**

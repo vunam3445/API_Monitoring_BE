@@ -12,12 +12,13 @@ import com.example.demo.modules.subscription.repositories.SubscriptionPlanReposi
 import com.example.demo.modules.subscription.services.ISubscriptionPlanService;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.user.entities.User;
+import com.example.demo.common.security.ISecurityContextService;
+
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+
 import com.example.demo.common.base.RestPageImpl;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -30,14 +31,19 @@ public class SubscriptionPlanService
         implements ISubscriptionPlanService {
 
     private final UserRepository userRepository;
+    private final ISecurityContextService securityContextService;
+
 
     public SubscriptionPlanService(SubscriptionPlanRepository repository,
                                    SubscriptionPlanMapper mapper,
                                    ICacheService cacheService,
-                                   UserRepository userRepository) {
+                                   UserRepository userRepository,
+                                   ISecurityContextService securityContextService) {
         super(repository, mapper, cacheService);
         this.userRepository = userRepository;
+        this.securityContextService = securityContextService;
     }
+
 
     @Override
     protected Class<SubscriptionPlan> getEntityClass() {
@@ -97,10 +103,9 @@ public class SubscriptionPlanService
     }
 
     private UUID getCurrentUserPlanId() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof User user) {
-            return user.getSubscriptionPlan() != null ? user.getSubscriptionPlan().getId() : null;
-        }
-        return null;
+        return securityContextService.getCurrentUser()
+                .map(user -> user.getSubscriptionPlan() != null ? user.getSubscriptionPlan().getId() : null)
+                .orElse(null);
     }
+
 }

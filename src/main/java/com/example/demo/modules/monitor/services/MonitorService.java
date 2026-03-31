@@ -4,15 +4,21 @@ import com.example.demo.common.base.BaseMapper;
 import com.example.demo.common.base.BaseService;
 import com.example.demo.common.cache.ICacheService;
 import com.example.demo.common.exceptions.ResourceNotFoundException;
+import com.example.demo.common.security.ISecurityContextService;
 import com.example.demo.modules.monitor.dto.ApiResponse;
 import com.example.demo.modules.monitor.dto.CreateApiRequest;
 import com.example.demo.modules.monitor.dto.UpdateApiRequest;
+import com.example.demo.common.exceptions.AuthenticationException;
+import com.example.demo.common.exceptions.ForbidenException;
+import com.example.demo.modules.user.entities.User;
 
 import com.example.demo.modules.monitor.entities.Monitor;
 import com.example.demo.modules.monitor.mappers.MonitorMapper;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.monitor.lock.DistributedLockService;
 import com.example.demo.modules.monitor.messaging.MonitorProducer;
+import com.example.demo.modules.subscription.entities.SubscriptionPlan;
+import com.example.demo.modules.user.repositories.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,17 +41,23 @@ public class MonitorService
     private final MonitorRepository monitorRepository;
     private final DistributedLockService lockService;
     private final MonitorProducer monitorProducer;
+    private final ISecurityContextService iSecurityContextService;
+    private final UserRepository userRepository;
 
     public MonitorService(
             MonitorRepository repository,
             MonitorMapper mapper,
             ICacheService cacheService,
             DistributedLockService lockService,
+            ISecurityContextService iSecurityContextService,
+            UserRepository userRepository,
             MonitorProducer monitorProducer) {
         super(repository, mapper, cacheService);
         this.monitorRepository = repository;
         this.lockService = lockService;
         this.monitorProducer = monitorProducer;
+        this.iSecurityContextService = iSecurityContextService;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -107,5 +119,43 @@ public class MonitorService
         }
 
         return false; // Đã có lock (đang được chạy bởi worker khác hoặc scheduler)
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse create(CreateApiRequest request) {
+        User currentUser = iSecurityContextService.getCurrentUser()
+                .orElseThrow(() -> new AuthenticationException("Bạn cần đăng nhập để thực hiện thao tác này."));
+
+        // Re-fetch user from database to ensure it's managed by the current session
+        User user = userRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new AuthenticationException("Không tìm thấy thông tin người dùng."));
+
+        SubscriptionPlan plan = user.getSubscriptionPlan();
+        if (plan == null) {
+            throw new ForbidenException("Người dùng hiện tại chưa có gói đăng ký hợp lệ.");
+        }
+
+        // 1. Kiểm tra số lượng monitor tối đa của gói
+        long currentMonitors = monitorRepository.countByUserId(user.getId());
+        if (currentMonitors >= plan.getMaxMonitors()) {
+            throw new ForbidenException("Bạn đã đạt tới giới hạn tối đa (" + plan.getMaxMonitors() + ") monitor của gói " + plan.getName() + ".");
+        }
+
+        // 2. Kiểm tra khoảng thời gian check tối thiểu của gói
+        if (request.getCheckInterval() < plan.getMinInterval()) {
+            throw new ForbidenException("Gói " + plan.getName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là " + plan.getMinInterval() + " giây.");
+        }
+
+        // 3. Tạo mới monitor
+        Monitor monitor = mapper.toEntity(request);
+        monitor.setUserId(user.getId());
+        
+        Monitor savedMonitor = repository.saveAndFlush(monitor);
+
+        // Xóa cache danh sách
+        evictListCache();
+
+        return mapper.toResponse(savedMonitor);
     }
 }

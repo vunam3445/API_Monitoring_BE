@@ -25,4 +25,6 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
     @Query("SELECT m FROM Monitor m WHERE m.isActive = true " +
            "AND (m.nextCheckAt IS NULL OR m.nextCheckAt <= :now)")
     List<Monitor> findDueMonitors(@Param("now") LocalDateTime now);
+
+    long countByUserId(UUID userId);
 }

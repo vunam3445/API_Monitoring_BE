@@ -1,0 +1,163 @@
+﻿[INFO] Scanning for projects...
+[INFO] 
+[INFO] --------------------------< com.example:demo >--------------------------
+[INFO] Building API Monitoring 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.5.0:clean (default-clean) @ demo ---
+[INFO] Deleting E:\API Monitoring\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ demo ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 0 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.14.1:compile (default-compile) @ demo ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 113 source files with javac [debug parameters release 17] to target\classes
+[INFO] -------------------------------------------------------------
+[WARNING] COMPILATION WARNING : 
+[INFO] -------------------------------------------------------------
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/auth/dto/LoginResponse.java:[17,20] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[22,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[25,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[28,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[31,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[34,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[39,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[43,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[49,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[52,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[54,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[58,20] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/dto/CreateUserSettingRequest.java:[61,20] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/common/exceptions/BaseException.java:[5,1] Generating equals/hashCode implementation but without a call to superclass, even though this class does not extend java.lang.Object. If this is intentional, add '@EqualsAndHashCode(callSuper=false)' to your type.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/subscription/mappers/SubscriptionPlanMapper.java:[21,22] Unmapped target properties: "id, isDelete".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/subscription/mappers/SubscriptionPlanMapper.java:[24,18] Unmapped target property: "isCurrentPlan".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/subscription/mappers/SubscriptionPlanMapper.java:[28,10] Unmapped target properties: "id, isDelete".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/mappers/UserMapper.java:[18,10] Unmapped target properties: "id, passwordHash, fullName, company, provider, providerId, status, role, planType, refreshToken, refreshTokenExpiry, lastLoginAt, createdAt, settings, subscriptionPlan, authorities".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/mappers/UserMapper.java:[25,10] Unmapped target properties: "email, passwordHash, provider, providerId, status, role, planType, avatarUrl, avatarPublicId, refreshToken, refreshTokenExpiry, lastLoginAt, createdAt, settings, subscriptionPlan, authorities".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/monitor/mappers/MonitorMapper.java:[23,13] Unmapped target properties: "id, isActive, isMuted, lastStatus, lastLatencyMs, lastErrorMessage, lastCheckAt, consecutiveFailures, nextCheckAt, createdAt".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/monitor/mappers/MonitorMapper.java:[29,17] Unmapped target property: "uptimePercentage".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/monitor/mappers/MonitorMapper.java:[36,10] Unmapped target properties: "userId, lastStatus, lastLatencyMs, lastErrorMessage, lastCheckAt, consecutiveFailures, nextCheckAt, createdAt".
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/mappers/UserSettingMapper.java:[14,8] Unmapped target property: "user". Occured at 'E toEntity(CREQ createRequest)' in 'BaseMapper'.
+[WARNING] /E:/API Monitoring/src/main/java/com/example/demo/modules/user/mappers/UserSettingMapper.java:[14,8] Unmapped target properties: "userId, user". Occured at 'void updateEntityFromDto(UREQ updateRequest, E entity)' in 'BaseMapper'.
+[INFO] 24 warnings 
+[INFO] -------------------------------------------------------------
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/Config.java:[16,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/Config.java:[110,39] cannot find symbol
+  symbol:   class HttpServletRequest
+  location: class com.vnpay.common.Config
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[21,21] package javax.servlet does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[22,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[23,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[24,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[30,34] cannot find symbol
+  symbol: class HttpServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[33,27] cannot find symbol
+  symbol:   class HttpServletRequest
+  location: class com.vnpay.common.ajaxServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[33,51] cannot find symbol
+  symbol:   class HttpServletResponse
+  location: class com.vnpay.common.ajaxServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[33,84] cannot find symbol
+  symbol:   class ServletException
+  location: class com.vnpay.common.ajaxServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[18,21] package javax.servlet does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[19,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[20,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[21,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[27,33] cannot find symbol
+  symbol: class HttpServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[31,27] cannot find symbol
+  symbol:   class HttpServletRequest
+  location: class com.vnpay.common.vnpayQuery
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[31,51] cannot find symbol
+  symbol:   class HttpServletResponse
+  location: class com.vnpay.common.vnpayQuery
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[31,84] cannot find symbol
+  symbol:   class ServletException
+  location: class com.vnpay.common.vnpayQuery
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[19,21] package javax.servlet does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[20,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[21,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[22,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[28,34] cannot find symbol
+  symbol: class HttpServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[32,27] cannot find symbol
+  symbol:   class HttpServletRequest
+  location: class com.vnpay.common.vnpayRefund
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[32,51] cannot find symbol
+  symbol:   class HttpServletResponse
+  location: class com.vnpay.common.vnpayRefund
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[32,84] cannot find symbol
+  symbol:   class ServletException
+  location: class com.vnpay.common.vnpayRefund
+[INFO] 26 errors 
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  5.734 s
+[INFO] Finished at: 2026-03-31T23:15:03+07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.14.1:compile (default-compile) on project demo: Compilation failure: Compilation failure: 
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/Config.java:[16,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/Config.java:[110,39] cannot find symbol
+[ERROR]   symbol:   class HttpServletRequest
+[ERROR]   location: class com.vnpay.common.Config
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[21,21] package javax.servlet does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[22,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[23,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[24,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[30,34] cannot find symbol
+[ERROR]   symbol: class HttpServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[33,27] cannot find symbol
+[ERROR]   symbol:   class HttpServletRequest
+[ERROR]   location: class com.vnpay.common.ajaxServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[33,51] cannot find symbol
+[ERROR]   symbol:   class HttpServletResponse
+[ERROR]   location: class com.vnpay.common.ajaxServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/ajaxServlet.java:[33,84] cannot find symbol
+[ERROR]   symbol:   class ServletException
+[ERROR]   location: class com.vnpay.common.ajaxServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[18,21] package javax.servlet does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[19,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[20,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[21,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[27,33] cannot find symbol
+[ERROR]   symbol: class HttpServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[31,27] cannot find symbol
+[ERROR]   symbol:   class HttpServletRequest
+[ERROR]   location: class com.vnpay.common.vnpayQuery
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[31,51] cannot find symbol
+[ERROR]   symbol:   class HttpServletResponse
+[ERROR]   location: class com.vnpay.common.vnpayQuery
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayQuery.java:[31,84] cannot find symbol
+[ERROR]   symbol:   class ServletException
+[ERROR]   location: class com.vnpay.common.vnpayQuery
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[19,21] package javax.servlet does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[20,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[21,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[22,26] package javax.servlet.http does not exist
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[28,34] cannot find symbol
+[ERROR]   symbol: class HttpServlet
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[32,27] cannot find symbol
+[ERROR]   symbol:   class HttpServletRequest
+[ERROR]   location: class com.vnpay.common.vnpayRefund
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[32,51] cannot find symbol
+[ERROR]   symbol:   class HttpServletResponse
+[ERROR]   location: class com.vnpay.common.vnpayRefund
+[ERROR] /E:/API Monitoring/src/main/java/com/example/demo/vnpay_jsp/src/java/com/vnpay/common/vnpayRefund.java:[32,84] cannot find symbol
+[ERROR]   symbol:   class ServletException
+[ERROR]   location: class com.vnpay.common.vnpayRefund
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

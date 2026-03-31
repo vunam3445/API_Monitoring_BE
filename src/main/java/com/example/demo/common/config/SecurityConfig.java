@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/payment/vnpay-return").permitAll() // Cho phép VNPay callback không cần token
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
                 )
                 // 2. CHÈN DÒNG NÀY: Kết nối Provider và Filter vào chuỗi bảo mật
