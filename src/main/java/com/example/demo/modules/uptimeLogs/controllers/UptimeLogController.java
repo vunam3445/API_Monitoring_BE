@@ -78,3 +78,4 @@ public class UptimeLogController {
                 uptimeLogService.findLogsByUser(userId, search, statusCode, method, pageable));
     }
 }
+

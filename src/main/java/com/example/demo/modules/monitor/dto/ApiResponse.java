@@ -1,5 +1,6 @@
 package com.example.demo.modules.monitor.dto;
 
+import com.example.demo.modules.monitor.enums.MonitorStatus;
 import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,7 +30,7 @@ public class ApiResponse {
     private Boolean isMuted;
 
     // Các trường trạng thái thời gian thực
-    private String lastStatus;
+    private MonitorStatus lastStatus;
     private Integer lastLatencyMs;
     private String lastErrorMessage;
     private LocalDateTime lastCheckAt;

@@ -22,3 +22,4 @@ public interface ApiExecutionService {
      */
     UptimeLogs execute(Monitor monitor, Integer timeoutMs);
 }
+

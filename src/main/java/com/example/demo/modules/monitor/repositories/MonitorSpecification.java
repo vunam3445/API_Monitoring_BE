@@ -1,6 +1,7 @@
 package com.example.demo.modules.monitor.repositories;
 
 import com.example.demo.modules.monitor.entities.Monitor;
+import com.example.demo.modules.monitor.enums.MonitorStatus;
 import org.springframework.data.jpa.domain.Specification;
 import java.util.UUID;
 
@@ -10,12 +11,17 @@ public class MonitorSpecification {
         return (root, query, cb) -> cb.equal(root.get("userId"), userId);
     }
 
-    public static Specification<Monitor> hasStatus(String lastStatus) {
+    public static Specification<Monitor> hasStatus(String statusStr) {
         return (root, query, cb) -> {
-            if (lastStatus == null || lastStatus.isBlank()) {
+            if (statusStr == null || statusStr.isBlank()) {
                 return null;
             }
-            return cb.equal(cb.lower(root.get("lastStatus")), lastStatus.toLowerCase());
+            try {
+                MonitorStatus status = MonitorStatus.valueOf(statusStr.toUpperCase());
+                return cb.equal(root.get("lastStatus"), status);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
         };
     }
 

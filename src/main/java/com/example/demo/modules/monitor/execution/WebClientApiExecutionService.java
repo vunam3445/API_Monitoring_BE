@@ -1,6 +1,7 @@
 package com.example.demo.modules.monitor.execution;
 
 import com.example.demo.modules.monitor.entities.Monitor;
+import com.example.demo.modules.monitor.enums.MonitorEventType;
 import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -81,6 +82,14 @@ public class WebClientApiExecutionService implements ApiExecutionService {
             uptimeLogs.setErrorMessage(ex.getMessage());
             uptimeLogs.setAssertionStatus("FAILED");
             uptimeLogs.setAssertionMessage("Request failed: " + ex.getMessage());
+            
+            // Xác định event type cho lỗi kết nối/timeout
+            String errorType = uptimeLogs.getErrorType();
+            if ("TIMEOUT".equals(errorType)) {
+                uptimeLogs.setEventType(MonitorEventType.TIMEOUT);
+            } else {
+                uptimeLogs.setEventType(MonitorEventType.API_FAILURE);
+            }
         }
 
         return uptimeLogs;
@@ -224,6 +233,14 @@ public class WebClientApiExecutionService implements ApiExecutionService {
             if (uptimeLogs.getErrorMessage() == null) {
                 uptimeLogs.setErrorMessage(finalMessage);
             }
+            uptimeLogs.setEventType(MonitorEventType.API_FAILURE);
+        } else {
+            // Trường hợp UP
+            if ("WARNING".equals(assertionStatus)) {
+                uptimeLogs.setEventType(MonitorEventType.SLOW_RESPONSE);
+            } else {
+                uptimeLogs.setEventType(MonitorEventType.HEALTH_CHECK_PASSED);
+            }
         }
     }
 
@@ -259,3 +276,4 @@ public class WebClientApiExecutionService implements ApiExecutionService {
                 : text;
     }
 }
+

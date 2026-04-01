@@ -31,3 +31,4 @@ public interface UptimeLogMapper {
      */
     List<UptimeLogResponse> toResponseList(List<UptimeLogs> entities);
 }
+

@@ -54,3 +54,4 @@ public class UptimeLogResponse {
     /** Chi tiết lý do assertion pass/fail */
     private String assertionMessage;
 }
+

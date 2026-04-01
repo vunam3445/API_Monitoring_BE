@@ -1,6 +1,7 @@
 package com.example.demo.modules.uptimeLogs.entities;
 
 import com.example.demo.modules.monitor.entities.Monitor;
+import com.example.demo.modules.monitor.enums.MonitorEventType;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
@@ -98,6 +99,13 @@ public class UptimeLogs {
      */
     @Column(name = "response_snippet", columnDefinition = "text")
     private String responseSnippet;
+
+    /**
+     * Loại sự kiện (ví dụ: UP, DOWN, DEGRADED).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type")
+    private MonitorEventType eventType;
 
     /**
      * Kết quả kiểm tra assertion.

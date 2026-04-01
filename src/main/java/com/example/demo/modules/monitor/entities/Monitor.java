@@ -1,5 +1,6 @@
 package com.example.demo.modules.monitor.entities;
 
+import com.example.demo.modules.monitor.enums.MonitorStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -152,8 +153,9 @@ public class Monitor {
      * Trạng thái lần kiểm tra gần nhất.
      * Ví dụ: Healthy, Warning, Down
      */
+    @Enumerated(EnumType.STRING)
     @Column(name = "last_status")
-    private String lastStatus;
+    private MonitorStatus lastStatus;
 
     /**
      * Độ trễ gần nhất đo được (ms).

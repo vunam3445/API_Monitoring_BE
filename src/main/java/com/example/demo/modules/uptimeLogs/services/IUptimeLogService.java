@@ -38,3 +38,4 @@ public interface IUptimeLogService {
     Page<UptimeLogResponse> findLogsByUser(
             UUID userId, String search, Integer statusCode, String method, Pageable pageable);
 }
+

@@ -1,6 +1,8 @@
 package com.example.demo.modules.monitor.workers;
 
 import com.example.demo.modules.monitor.entities.Monitor;
+import com.example.demo.modules.monitor.enums.MonitorStatus;
+import com.example.demo.modules.monitor.enums.MonitorEventType;
 import com.example.demo.modules.monitor.execution.ApiExecutionService;
 import com.example.demo.modules.monitor.lock.DistributedLockService;
 import com.example.demo.modules.monitor.messaging.MonitorExecutionMessage;
@@ -114,15 +116,15 @@ public class MonitorWorker {
             // Chỉ đặt là "Down" nếu số lần lỗi liên tiếp vượt quá ngưỡng cấu hình
             int currentFailures = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
             if (currentFailures >= defaultFailCount) {
-                monitor.setLastStatus("Down");
+                monitor.setLastStatus(MonitorStatus.DOWN);
             } else {
                 // Đang lỗi nhưng chưa đủ số lần để confirm Down -> hiển thị cảnh báo Warning hoặc giữ nguyên
-                monitor.setLastStatus("Warning"); 
+                monitor.setLastStatus(MonitorStatus.WARNING); 
             }
         } else if ("WARNING".equals(result.getAssertionStatus())) {
-            monitor.setLastStatus("Warning");
+            monitor.setLastStatus(MonitorStatus.WARNING);
         } else {
-            monitor.setLastStatus("Healthy");
+            monitor.setLastStatus(MonitorStatus.HEALTHY);
         }
         
         monitor.setLastLatencyMs(result.getResponseTimeMs());
@@ -131,6 +133,10 @@ public class MonitorWorker {
 
         // Cập nhật consecutive failures
         if (Boolean.TRUE.equals(result.getIsUp())) {
+            // Nếu trước đó đang fail mà giờ thành công -> RECOVERED
+            if (monitor.getConsecutiveFailures() != null && monitor.getConsecutiveFailures() > 0) {
+                result.setEventType(MonitorEventType.RECOVERED);
+            }
             // Bao gồm cả Healthy và Warning đều tính là Up, reset số lần fail liên tiếp
             monitor.setConsecutiveFailures(0);
         } else {
@@ -148,5 +154,10 @@ public class MonitorWorker {
         cacheService.evictByPrefix("api-monitoring:api:list::");
         cacheService.evict("api-monitoring:api:object::monitor:" + monitor.getId());
         cacheService.evictByPrefix("api-monitoring:uptime-logs::");
+        cacheService.evict("monitoring:summary:" + monitor.getUserId());
+        cacheService.evict("monitoring:key-health:" + monitor.getUserId());
+        cacheService.evictByPrefix("monitoring:recent-events:" + monitor.getUserId());
+        cacheService.evict("monitoring:overview:" + monitor.getId());
     }
 }
+

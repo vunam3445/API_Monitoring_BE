@@ -1,6 +1,7 @@
 package com.example.demo.modules.monitor.repositories;
 
 import com.example.demo.modules.monitor.entities.Monitor;
+import com.example.demo.modules.monitor.enums.MonitorStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,6 +16,8 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpecificationExecutor<Monitor> {
     Page<Monitor> findByUserId(UUID userId, Pageable pageable);
+ 
+    List<Monitor> findAllByUserId(UUID userId);
 
     /**
      * Tìm các monitor đang active và đã đến hạn kiểm tra.
@@ -27,4 +30,8 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
     List<Monitor> findDueMonitors(@Param("now") LocalDateTime now);
 
     long countByUserId(UUID userId);
+ 
+    long countByUserIdAndLastStatus(UUID userId, MonitorStatus status);
+ 
+    long countByUserIdAndIsActive(UUID userId, boolean isActive);
 }

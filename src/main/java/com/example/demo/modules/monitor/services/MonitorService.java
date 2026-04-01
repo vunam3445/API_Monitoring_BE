@@ -97,6 +97,9 @@ public class MonitorService
         
         evictObjectCache(monitor.getId());
         evictListCache();
+        // Invalidate monitoring summary cache
+        cacheService.evict("monitoring:summary:" + monitor.getUserId());
+        cacheService.evict("monitoring:key-health:" + monitor.getUserId());
         
         return repository.save(monitor).getIsActive();
     }
