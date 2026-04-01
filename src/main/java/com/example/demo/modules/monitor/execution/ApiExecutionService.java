@@ -17,7 +17,8 @@ public interface ApiExecutionService {
      * Thực thi gọi API endpoint của monitor và trả về kết quả dưới dạng UptimeLogs.
      *
      * @param monitor Entity chứa đầy đủ cấu hình (URL, method, headers, body, auth, assertions...)
+     * @param timeoutMs Thời gian chờ tối đa cho request (ms)
      * @return UptimeLogs đã được populate đầy đủ thông tin kết quả (chưa persist)
      */
-    UptimeLogs execute(Monitor monitor);
+    UptimeLogs execute(Monitor monitor, Integer timeoutMs);
 }

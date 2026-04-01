@@ -8,8 +8,13 @@ import com.example.demo.modules.payment.dto.CreatePaymentRequest;
 import com.example.demo.modules.payment.dto.PaymentResponse;
 import com.example.demo.modules.subscription.entities.Subscription;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
+import com.example.demo.modules.subscription.enums.BillingCycle;
+import com.example.demo.modules.subscription.enums.SubscriptionStatus;
 import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
+import com.example.demo.modules.paymentLogs.entities.PaymentLogs;
+import com.example.demo.modules.paymentLogs.enums.PaymentStatus;
+import com.example.demo.modules.paymentLogs.repositories.PaymentLogsRepository;
 import com.example.demo.modules.user.entities.User;
 import com.example.demo.modules.user.repositories.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -34,6 +40,7 @@ public class VNPayService implements IPaymentService {
     private final SubscriptionPlanRepository planRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
+    private final PaymentLogsRepository paymentLogsRepository;
 
     @Override
     public PaymentResponse createPaymentUrl(CreatePaymentRequest request, HttpServletRequest servletRequest) {
@@ -113,6 +120,21 @@ public class VNPayService implements IPaymentService {
         queryUrl += "&vnp_SecureHash=" + vnp_SecureHash;
         String paymentUrl = vnPayConfig.getVnp_PayUrl() + "?" + queryUrl;
 
+        // 3. Kiểm tra xem có giao dịch PENDING nào không để tái sử dụng, tránh rác DB
+        PaymentLogs paymentLog = paymentLogsRepository.findFirstByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), PaymentStatus.PENDING)
+                .orElse(new PaymentLogs());
+
+        paymentLog.setUser(user);
+        paymentLog.setAmount(BigDecimal.valueOf(plan.getPrice()));
+        paymentLog.setPlanName(plan.getName());
+        paymentLog.setStatus(PaymentStatus.PENDING);
+        paymentLog.setTransactionId(vnp_TxnRef);
+        paymentLog.setPaymentMethod("VNPAY");
+        paymentLog.setCurrency("VND");
+        paymentLog.setSubscription(subscriptionRepository.findByUserId(user.getId()).orElse(null));
+
+        paymentLogsRepository.save(paymentLog);
+
         return PaymentResponse.builder()
                 .paymentUrl(paymentUrl)
                 .build();
@@ -151,6 +173,10 @@ public class VNPayService implements IPaymentService {
 
         String signValue = vnPayConfig.hmacSHA512(vnPayConfig.getSecretKey(), hashData.toString());
 
+        String vnp_TxnRef = requestParams.get("vnp_TxnRef");
+        PaymentLogs paymentLog = paymentLogsRepository.findByTransactionId(vnp_TxnRef)
+                .orElse(null);
+
         if (signValue.equals(vnp_SecureHash)) {
             if ("00".equals(requestParams.get("vnp_TransactionStatus"))) {
                 // Giao dịch thành công, phân tích OrderInfo để lấy UserID và PlanID
@@ -181,21 +207,40 @@ public class VNPayService implements IPaymentService {
 
                     subscription.setUser(user);
                     subscription.setPlan(plan);
+                    subscription.setPlanName(plan.getName());
+                    subscription.setPlanPrice(BigDecimal.valueOf(plan.getPrice()));
+                    subscription.setMaxMonitors(plan.getMaxMonitors());
+                    subscription.setMinInterval(plan.getMinInterval());
                     subscription.setStartDate(LocalDateTime.now());
-                    subscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1)); // Giả sử tháng nào cũng tính 1 tháng
-                    subscription.setBillingCycle("MONTHLY");
-                    subscription.setStatus("ACTIVE");
-                    subscription.setPaymentStatus("PAID");
+                    subscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1));
+                    subscription.setBillingCycle(BillingCycle.MONTHLY);
+                    subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    subscription.setPaymentStatus(PaymentStatus.PAID);
 
                     userRepository.save(user);
                     subscriptionRepository.save(subscription);
+
+                    // Cập nhật PaymentLog thành công
+                    if (paymentLog != null) {
+                        paymentLog.setStatus(PaymentStatus.SUCCESS);
+                        paymentLog.setSubscription(subscription); // Gắn subscription vào log nếu trước đó là null
+                        paymentLogsRepository.save(paymentLog);
+                    }
 
                     log.info("Thanh toán thành công. Kích hoạt gói {} cho user {}", plan.getName(), user.getEmail());
                     return true;
                 } catch (Exception e) {
                     log.error("Lỗi khi xử lý dữ liệu sau thanh toán: ", e);
+                    // Có thể cân nhắc update log thành FAILED ở đây nếu cần
                     return false;
                 }
+            } else {
+                // Giao dịch thất bại từ phía VNPay
+                if (paymentLog != null) {
+                    paymentLog.setStatus(PaymentStatus.FAILED);
+                    paymentLogsRepository.save(paymentLog);
+                }
+                log.warn("Giao dịch VNPay thất bại mã: {}", requestParams.get("vnp_TransactionStatus"));
             }
         }
         return false;

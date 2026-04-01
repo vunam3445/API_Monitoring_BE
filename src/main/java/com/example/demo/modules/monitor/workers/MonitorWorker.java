@@ -42,6 +42,7 @@ public class MonitorWorker {
     private final UptimeLogsRepository uptimeLogsRepository;
     private final ApiExecutionService apiExecutionService;
     private final DistributedLockService lockService;
+    private final com.example.demo.modules.user.repositories.UserSettingRepository userSettingRepository;
     private final com.example.demo.common.cache.ICacheService cacheService;
 
     @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
@@ -67,17 +68,31 @@ public class MonitorWorker {
                 return;
             }
 
-            // 2. Thực thi gọi API
-            log.info("Executing API check for monitor: {} ({})", monitor.getName(), monitor.getUrl());
-            UptimeLogs result = apiExecutionService.execute(monitor);
+            // 2. Lấy UserSetting để lấy timeout & failCount
+            com.example.demo.modules.user.entities.UserSetting setting = userSettingRepository.findById(monitor.getUserId()).orElse(null);
+            Integer timeoutMs = (setting != null) ? setting.getDefaultTimeoutMs() : 5000;
 
-            // 3. Lưu kết quả vào bảng uptime_logs
+            // 3. Thực thi gọi API (có retry if configured)
+            int retryAttempts = (setting != null && setting.getRetryAttempts() != null) ? setting.getRetryAttempts() : 0;
+            UptimeLogs result = null;
+            
+            for (int i = 0; i <= retryAttempts; i++) {
+                result = apiExecutionService.execute(monitor, timeoutMs);
+                if (Boolean.TRUE.equals(result.getIsUp())) {
+                    break; // Thành công thì thoát loop
+                }
+                if (i < retryAttempts) {
+                    log.info("API check failed for {}, retrying... (Attempt {}/{})", monitor.getName(), i + 1, retryAttempts);
+                }
+            }
+
+            // 4. Lưu kết quả vào bảng uptime_logs
             uptimeLogsRepository.save(result);
             log.info("Saved uptime log for monitor: {} | isUp={} | statusCode={} | responseTime={}ms",
                     monitor.getName(), result.getIsUp(), result.getStatusCode(), result.getResponseTimeMs());
 
-            // 4. Cập nhật trạng thái gần nhất trên Monitor entity
-            updateMonitorStatus(monitor, result);
+            // 5. Cập nhật trạng thái gần nhất trên Monitor entity
+            updateMonitorStatus(monitor, result, setting);
 
         } catch (Exception e) {
             log.error("Error processing monitor job: {}", monitorId, e);
@@ -91,10 +106,19 @@ public class MonitorWorker {
      * Cập nhật các trường trạng thái gần nhất trên Monitor.
      * Giúp dashboard hiển thị nhanh mà không cần query bảng uptime_logs.
      */
-    private void updateMonitorStatus(Monitor monitor, UptimeLogs result) {
+    private void updateMonitorStatus(Monitor monitor, UptimeLogs result, com.example.demo.modules.user.entities.UserSetting setting) {
+        int defaultFailCount = (setting != null) ? setting.getDefaultFailCount() : 3;
+
         // Cập nhật trạng thái gần nhất
         if (!result.getIsUp()) {
-            monitor.setLastStatus("Down");
+            // Chỉ đặt là "Down" nếu số lần lỗi liên tiếp vượt quá ngưỡng cấu hình
+            int currentFailures = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
+            if (currentFailures >= defaultFailCount) {
+                monitor.setLastStatus("Down");
+            } else {
+                // Đang lỗi nhưng chưa đủ số lần để confirm Down -> hiển thị cảnh báo Warning hoặc giữ nguyên
+                monitor.setLastStatus("Warning"); 
+            }
         } else if ("WARNING".equals(result.getAssertionStatus())) {
             monitor.setLastStatus("Warning");
         } else {

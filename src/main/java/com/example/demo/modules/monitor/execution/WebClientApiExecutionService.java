@@ -41,7 +41,7 @@ public class WebClientApiExecutionService implements ApiExecutionService {
     }
 
     @Override
-    public UptimeLogs execute(Monitor monitor) {
+    public UptimeLogs execute(Monitor monitor, Integer timeoutMs) {
         UptimeLogs uptimeLogs = new UptimeLogs();
         uptimeLogs.setMonitor(monitor); // Gán entity để MapStruct lấy được name/url/method
         uptimeLogs.setMonitorId(monitor.getId());
@@ -50,7 +50,7 @@ public class WebClientApiExecutionService implements ApiExecutionService {
 
         try {
             // Xây dựng và gửi request
-            String responseBody = buildAndSendRequest(monitor);
+            String responseBody = buildAndSendRequest(monitor, timeoutMs);
             long responseTimeMs = System.currentTimeMillis() - startTime;
 
             // Populate kết quả thành công (status code sẽ không có ở đây vì WebClient
@@ -89,7 +89,7 @@ public class WebClientApiExecutionService implements ApiExecutionService {
     /**
      * Xây dựng WebClient request từ cấu hình Monitor và gửi đi.
      */
-    private String buildAndSendRequest(Monitor monitor) {
+    private String buildAndSendRequest(Monitor monitor, Integer timeoutMs) {
         HttpMethod httpMethod = HttpMethod.valueOf(monitor.getMethod().toUpperCase());
 
         WebClient.RequestBodySpec requestSpec = webClient
@@ -110,9 +110,9 @@ public class WebClientApiExecutionService implements ApiExecutionService {
                     .bodyToMono(String.class);
         }
 
-        // Block với timeout
+        // Block với timeout truyền vào (ms)
         return responseMono
-                .timeout(Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS))
+                .timeout(Duration.ofMillis(timeoutMs != null ? timeoutMs : DEFAULT_TIMEOUT_SECONDS * 1000))
                 .block();
     }
 
@@ -212,8 +212,19 @@ public class WebClientApiExecutionService implements ApiExecutionService {
 
         uptimeLogs.setIsUp(isUp);
         uptimeLogs.setAssertionStatus(assertionStatus);
-        uptimeLogs.setAssertionMessage(
-                assertionMessage.isEmpty() ? "All assertions passed" : assertionMessage.toString().trim());
+        String finalMessage = assertionMessage.isEmpty() ? "All assertions passed" : assertionMessage.toString().trim();
+        uptimeLogs.setAssertionMessage(finalMessage);
+
+        // Bổ sung: Nếu hệ thống xác định là Down (isUp = false) thì điền vào errorType và errorMessage
+        if (!isUp) {
+            if (uptimeLogs.getErrorType() == null) {
+                uptimeLogs.setErrorType(uptimeLogs.getStatusCode() != null && uptimeLogs.getStatusCode() >= 400 
+                        ? "HTTP_ERROR" : "ASSERTION_FAILED");
+            }
+            if (uptimeLogs.getErrorMessage() == null) {
+                uptimeLogs.setErrorMessage(finalMessage);
+            }
+        }
     }
 
     /**
