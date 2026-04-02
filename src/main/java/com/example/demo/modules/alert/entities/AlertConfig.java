@@ -11,7 +11,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "alert_configs")
+@Table(
+        name = "alert_configs",
+        indexes = {
+                @Index(name = "idx_alert_config_monitor", columnList = "monitor_id"),
+                @Index(name = "idx_alert_config_type", columnList = "type")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

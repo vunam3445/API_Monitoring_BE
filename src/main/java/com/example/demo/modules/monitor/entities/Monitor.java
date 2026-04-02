@@ -1,6 +1,8 @@
 package com.example.demo.modules.monitor.entities;
 
+import com.example.demo.modules.alert.entities.Incident;
 import com.example.demo.modules.monitor.enums.MonitorStatus;
+import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -8,6 +10,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,6 +33,14 @@ public class Monitor {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @OneToMany(mappedBy = "monitor", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Incident> incidents = new ArrayList<>();
+
+    @OneToMany(mappedBy = "monitor", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<UptimeLogs> uptimeLogs = new ArrayList<>();
 
     /**
      * ID của user sở hữu monitor này.
@@ -74,8 +86,8 @@ public class Monitor {
      * Header của request dưới dạng key-value.
      * Ví dụ:
      * {
-     *   "Content-Type": "application/json",
-     *   "Authorization": "Bearer xxx"
+     * "Content-Type": "application/json",
+     * "Authorization": "Bearer xxx"
      * }
      */
     @JdbcTypeCode(SqlTypes.JSON)
@@ -86,8 +98,8 @@ public class Monitor {
      * Query parameters gắn vào URL khi gửi request.
      * Ví dụ:
      * {
-     *   "page": "1",
-     *   "limit": "10"
+     * "page": "1",
+     * "limit": "10"
      * }
      */
     @JdbcTypeCode(SqlTypes.JSON)

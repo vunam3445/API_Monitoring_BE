@@ -10,6 +10,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -32,6 +34,10 @@ public class Incident {
     @Id
     @GeneratedValue
     private UUID id;
+
+    @OneToMany(mappedBy = "incident", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AlertDelivery> deliveries = new ArrayList<>();
 
     /**
      * Monitor phát sinh sự cố
@@ -90,6 +96,12 @@ public class Incident {
      */
     @Column(name = "last_seen_at")
     private LocalDateTime lastSeenAt;
+
+    /**
+     * Lần cuối gửi notification thành công cho user
+     */
+    @Column(name = "last_notified_at")
+    private LocalDateTime lastNotifiedAt;
 
     /**
      * Số lần lỗi liên tiếp

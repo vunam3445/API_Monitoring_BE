@@ -36,8 +36,7 @@ import java.util.UUID;
 @Service
 public class MonitorService
         extends BaseService<Monitor, UUID, CreateApiRequest, UpdateApiRequest, ApiResponse>
-        implements IMonitorService
-{
+        implements IMonitorService {
     private final MonitorRepository monitorRepository;
     private final DistributedLockService lockService;
     private final MonitorProducer monitorProducer;
@@ -61,15 +60,30 @@ public class MonitorService
     }
 
     @Override
+    @Transactional
+    public void delete(UUID id) {
+        Monitor monitor = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Monitor: " + id));
+        
+        // Gọi lệnh delete trên instance sẽ kích hoạt JPA Cascade đã cấu hình ở Entity
+        repository.delete(monitor);
+
+        // Xóa cache
+        evictObjectCache(id);
+        evictListCache();
+        cacheService.evict("monitoring:summary:" + monitor.getUserId());
+        cacheService.evict("monitoring:key-health:" + monitor.getUserId());
+    }
+
+    @Override
     protected Class<Monitor> getEntityClass() {
         return Monitor.class;
     }
 
     @Override
-    @Cacheable(value = "api-monitoring:api:list",
-            key = "'user_' + #userId.toString() + '_status_' + (#lastStatus ?: 'all') + '_active_' + (#isActive ?: 'all') + '_search_' + (#search ?: 'none') + '_page_' + #pageable.pageNumber + '_size_' + #pageable.pageSize + '_sort_' + #pageable.sort.toString().replaceAll(':', '_')",
-            unless = "#result == null")
-    public Page<ApiResponse> findAllByUserId(UUID userId, String lastStatus, Boolean isActive, String search, Pageable pageable) {
+    @Cacheable(value = "api-monitoring:api:list", key = "'user_' + #userId.toString() + '_status_' + (#lastStatus ?: 'all') + '_active_' + (#isActive ?: 'all') + '_search_' + (#search ?: 'none') + '_page_' + #pageable.pageNumber + '_size_' + #pageable.pageSize + '_sort_' + #pageable.sort.toString().replaceAll(':', '_')", unless = "#result == null")
+    public Page<ApiResponse> findAllByUserId(UUID userId, String lastStatus, Boolean isActive, String search,
+            Pageable pageable) {
         Specification<Monitor> spec = Specification.where(MonitorSpecification.hasUserId(userId))
                 .and(MonitorSpecification.hasStatus(lastStatus))
                 .and(MonitorSpecification.hasActive(isActive))
@@ -83,8 +97,7 @@ public class MonitorService
                 entityPage.getNumber(),
                 entityPage.getSize(),
                 entityPage.getTotalElements(),
-                null, false, 0, null, false, 0
-        );
+                null, false, 0, null, false, 0);
     }
 
     @Override
@@ -92,17 +105,18 @@ public class MonitorService
     public Boolean updateAPIStatus(UUID id) {
         Monitor monitor = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy dữ liệu: " + id));
-        
+
         monitor.setIsActive(!monitor.getIsActive());
-        
+
         evictObjectCache(monitor.getId());
         evictListCache();
         // Invalidate monitoring summary cache
         cacheService.evict("monitoring:summary:" + monitor.getUserId());
         cacheService.evict("monitoring:key-health:" + monitor.getUserId());
-        
+
         return repository.save(monitor).getIsActive();
     }
+
     @Override
     public Boolean retry(UUID id) {
         Monitor monitor = repository.findById(id)
@@ -142,18 +156,20 @@ public class MonitorService
         // 1. Kiểm tra số lượng monitor tối đa của gói
         long currentMonitors = monitorRepository.countByUserId(user.getId());
         if (currentMonitors >= plan.getMaxMonitors()) {
-            throw new ForbidenException("Bạn đã đạt tới giới hạn tối đa (" + plan.getMaxMonitors() + ") monitor của gói " + plan.getName() + ".");
+            throw new ForbidenException("Bạn đã đạt tới giới hạn tối đa (" + plan.getMaxMonitors()
+                    + ") monitor của gói " + plan.getName() + ".");
         }
 
         // 2. Kiểm tra khoảng thời gian check tối thiểu của gói
         if (request.getCheckInterval() < plan.getMinInterval()) {
-            throw new ForbidenException("Gói " + plan.getName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là " + plan.getMinInterval() + " giây.");
+            throw new ForbidenException("Gói " + plan.getName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
+                    + plan.getMinInterval() + " giây.");
         }
 
         // 3. Tạo mới monitor
         Monitor monitor = mapper.toEntity(request);
         monitor.setUserId(user.getId());
-        
+
         Monitor savedMonitor = repository.saveAndFlush(monitor);
 
         // Xóa cache danh sách

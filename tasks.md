@@ -604,41 +604,41 @@ credential nhạy cảm
 ---
 15. Ưu tiên implement
 Phase 1
-entity + repository
-create/list/update alert config
-incident create/update/resolve
-list alerts
-summary alerts
+[x] entity + repository
+[x] create/list/update alert config
+[x] incident create/update/resolve
+[x] list alerts
+[x] summary alerts
 Phase 2
-Brevo SMTP email sender
-Slack webhook sender
-alert delivery log
-Redis cache cho summary, list, detail
-API test email/slack
+[x] Brevo SMTP email sender
+[x] Slack webhook sender
+[x] alert delivery log
+[ ] Redis cache cho summary, list, detail
+[x] API test email/slack
 Phase 3
-export CSV
-acknowledge/resolve manual
-retry/backoff notification
-tối ưu key invalidation
-tối ưu query và warm cache nếu cần
+[x] export CSV
+[x] acknowledge/resolve manual
+[ ] retry/backoff notification
+[x] tối ưu key invalidation
+[x] tối ưu query và warm cache nếu cần
 ---
 16. Endpoint checklist
 Alerts
-[ ] GET `/api/v1/alerts/summary`
-[ ] GET `/api/v1/alerts`
-[ ] GET `/api/v1/alerts/{id}`
-[ ] PATCH `/api/v1/alerts/{id}/acknowledge`
-[ ] PATCH `/api/v1/alerts/{id}/resolve`
-[ ] GET `/api/v1/alerts/export`
+[x] GET `/api/v1/alerts/summary`
+[x] GET `/api/v1/alerts`
+[x] GET `/api/v1/alerts/{id}`
+[x] PATCH `/api/v1/alerts/{id}/acknowledge`
+[x] PATCH `/api/v1/alerts/{id}/resolve`
+[x] GET `/api/v1/alerts/export`
 Alert configs
-[ ] GET `/api/v1/monitors/{monitorId}/alert-configs`
-[ ] POST `/api/v1/monitors/{monitorId}/alert-configs`
-[ ] PUT `/api/v1/monitors/{monitorId}/alert-configs/{id}`
-[ ] PATCH `/api/v1/monitors/{monitorId}/alert-configs/{id}/toggle`
-[ ] DELETE `/api/v1/monitors/{monitorId}/alert-configs/{id}`
+[x] GET `/api/v1/monitors/{monitorId}/alert-configs`
+[x] POST `/api/v1/monitors/{monitorId}/alert-configs`
+[x] PUT `/api/v1/monitors/{monitorId}/alert-configs/{id}`
+[x] PATCH `/api/v1/monitors/{monitorId}/alert-configs/{id}/toggle`
+[x] DELETE `/api/v1/monitors/{monitorId}/alert-configs/{id}`
 Test notification
-[ ] POST `/api/v1/alerts/test/email`
-[ ] POST `/api/v1/alerts/test/slack`
+[x] POST `/api/v1/alerts/test/email`
+[x] POST `/api/v1/alerts/test/slack`
 ---
 17. Ghi chú triển khai Brevo SMTP
 dùng `spring-boot-starter-mail`

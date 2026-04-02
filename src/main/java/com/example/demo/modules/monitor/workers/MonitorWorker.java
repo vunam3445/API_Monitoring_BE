@@ -10,6 +10,8 @@ import com.example.demo.modules.monitor.messaging.MonitorMQConfig;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
+import com.example.demo.modules.alert.services.IIncidentService;
+import com.example.demo.modules.user.repositories.UserSettingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -44,8 +46,9 @@ public class MonitorWorker {
     private final UptimeLogsRepository uptimeLogsRepository;
     private final ApiExecutionService apiExecutionService;
     private final DistributedLockService lockService;
-    private final com.example.demo.modules.user.repositories.UserSettingRepository userSettingRepository;
+    private final UserSettingRepository userSettingRepository;
     private final com.example.demo.common.cache.ICacheService cacheService;
+    private final IIncidentService incidentService;
 
     @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
     @Transactional
@@ -71,20 +74,23 @@ public class MonitorWorker {
             }
 
             // 2. Lấy UserSetting để lấy timeout & failCount
-            com.example.demo.modules.user.entities.UserSetting setting = userSettingRepository.findById(monitor.getUserId()).orElse(null);
+            com.example.demo.modules.user.entities.UserSetting setting = userSettingRepository
+                    .findById(monitor.getUserId()).orElse(null);
             Integer timeoutMs = (setting != null) ? setting.getDefaultTimeoutMs() : 5000;
 
             // 3. Thực thi gọi API (có retry if configured)
-            int retryAttempts = (setting != null && setting.getRetryAttempts() != null) ? setting.getRetryAttempts() : 0;
+            int retryAttempts = (setting != null && setting.getRetryAttempts() != null) ? setting.getRetryAttempts()
+                    : 0;
             UptimeLogs result = null;
-            
+
             for (int i = 0; i <= retryAttempts; i++) {
                 result = apiExecutionService.execute(monitor, timeoutMs);
                 if (Boolean.TRUE.equals(result.getIsUp())) {
                     break; // Thành công thì thoát loop
                 }
                 if (i < retryAttempts) {
-                    log.info("API check failed for {}, retrying... (Attempt {}/{})", monitor.getName(), i + 1, retryAttempts);
+                    log.info("API check failed for {}, retrying... (Attempt {}/{})", monitor.getName(), i + 1,
+                            retryAttempts);
                 }
             }
 
@@ -108,7 +114,8 @@ public class MonitorWorker {
      * Cập nhật các trường trạng thái gần nhất trên Monitor.
      * Giúp dashboard hiển thị nhanh mà không cần query bảng uptime_logs.
      */
-    private void updateMonitorStatus(Monitor monitor, UptimeLogs result, com.example.demo.modules.user.entities.UserSetting setting) {
+    private void updateMonitorStatus(Monitor monitor, UptimeLogs result,
+            com.example.demo.modules.user.entities.UserSetting setting) {
         int defaultFailCount = (setting != null) ? setting.getDefaultFailCount() : 3;
 
         // Cập nhật trạng thái gần nhất
@@ -118,15 +125,16 @@ public class MonitorWorker {
             if (currentFailures >= defaultFailCount) {
                 monitor.setLastStatus(MonitorStatus.DOWN);
             } else {
-                // Đang lỗi nhưng chưa đủ số lần để confirm Down -> hiển thị cảnh báo Warning hoặc giữ nguyên
-                monitor.setLastStatus(MonitorStatus.WARNING); 
+                // Đang lỗi nhưng chưa đủ số lần để confirm Down -> hiển thị cảnh báo Warning
+                // hoặc giữ nguyên
+                monitor.setLastStatus(MonitorStatus.WARNING);
             }
         } else if ("WARNING".equals(result.getAssertionStatus())) {
             monitor.setLastStatus(MonitorStatus.WARNING);
         } else {
             monitor.setLastStatus(MonitorStatus.HEALTHY);
         }
-        
+
         monitor.setLastLatencyMs(result.getResponseTimeMs());
         monitor.setLastCheckAt(LocalDateTime.now());
         monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
@@ -139,9 +147,17 @@ public class MonitorWorker {
             }
             // Bao gồm cả Healthy và Warning đều tính là Up, reset số lần fail liên tiếp
             monitor.setConsecutiveFailures(0);
+
+            // Trigger incident resolution check
+            incidentService.processCheckResult(monitor, result);
         } else {
-            int current = monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0;
-            monitor.setConsecutiveFailures(current + 1);
+            int current = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
+            monitor.setConsecutiveFailures(current);
+
+            // CHỈ kích hoạt incident khi số lần lỗi liên tiếp vượt ngưỡng (Threshold)
+            if (current >= defaultFailCount) {
+                incidentService.processCheckResult(monitor, result);
+            }
         }
 
         // Tính nextCheckAt dựa trên checkInterval
@@ -160,4 +176,3 @@ public class MonitorWorker {
         cacheService.evict("monitoring:overview:" + monitor.getId());
     }
 }
-
