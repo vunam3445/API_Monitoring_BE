@@ -1,5 +1,7 @@
 package com.example.demo.modules.auth.services;
 
+import com.example.demo.modules.subscription.services.SubscriptionService;
+
 import com.example.demo.common.security.JwtService;
 
 import com.example.demo.modules.auth.dto.GoogleLoginRequest;
@@ -11,10 +13,13 @@ import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.entities.User;
 import com.example.demo.modules.user.entities.UserSetting;
 import com.example.demo.modules.user.enums.UserRole;
-import com.example.demo.modules.user.enums.UserStatus;
+import com.example.demo.modules.subscription.enums.BillingCycle;
+import com.example.demo.modules.subscription.enums.SubscriptionStatus;
+import com.example.demo.modules.paymentLogs.enums.PaymentStatus;
 import com.example.demo.common.exceptions.*;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
+import com.example.demo.modules.user.enums.UserStatus;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
@@ -26,6 +31,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.UUID;
@@ -39,6 +45,7 @@ public class AuthService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final UserSettingRepository userSettingRepository;
+    private final SubscriptionService subscriptionService;
 
     @Value("${google.client-id}")
     private String googleClientId;
@@ -48,6 +55,7 @@ public class AuthService {
                        SubscriptionRepository subscriptionRepository,
                        BCryptPasswordEncoder passwordEncoder,
                        UserSettingRepository userSettingRepository,
+                       SubscriptionService subscriptionService,
                        JwtService jwtService) {
         this.userRepository = userRepository;
         this.planRepository = planRepository;
@@ -55,6 +63,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.userSettingRepository = userSettingRepository;
+        this.subscriptionService = subscriptionService;
     }
     @Transactional
     public User register(RegisterRequest request) {
@@ -76,8 +85,10 @@ public class AuthService {
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
         createUserDefaultSettings(user);
-        createDefaultFreeSubscription(user);
-        return userRepository.save(user);    }
+        User savedUser = userRepository.save(user);
+        createDefaultFreeSubscription(savedUser);
+        return savedUser;
+    }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -124,10 +135,12 @@ public class AuthService {
         // Nếu là người dùng mới đăng nhập Google lần đầu, tạo gói Free cho họ
         if (isNewUser) {
             createUserDefaultSettings(user);
-            createDefaultFreeSubscription(user);
+            User savedUser = userRepository.save(user);
+            createDefaultFreeSubscription(savedUser);
+            return generateLoginResponse(savedUser);
         }
-        User savedUser = userRepository.save(user);
-        return generateLoginResponse(savedUser);
+        User updatedUser = userRepository.save(user);
+        return generateLoginResponse(updatedUser);
     }
 
     /**
@@ -194,12 +207,7 @@ public class AuthService {
     }
 
     private void createDefaultFreeSubscription(User user) {
-        SubscriptionPlan freePlan = planRepository.findByName("FREE")
-                .orElseThrow(() -> new RuntimeException("Lỗi hệ thống: Không tìm thấy cấu hình gói FREE."));
-
-        // Cập nhật theo yêu cầu: Bỏ insert vào bảng subscriptions khi khởi tạo
-        // Chỉ lưu định danh gói cước trực tiếp qua khóa ngoại plan_id vào User
-        user.setSubscriptionPlan(freePlan);
+        subscriptionService.subscribeFreePlan(user);
     }
 
     private void createUserDefaultSettings(User user) {

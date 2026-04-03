@@ -1,5 +1,6 @@
 package com.example.demo.common.base;
 
+import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +21,7 @@ public abstract class BaseController<CREQ, UREQ, RES, ID> {
     }
 
     @PostMapping
-    public ResponseEntity<RES> create(@RequestBody CREQ request) {
+    public ResponseEntity<RES> create(@Valid @RequestBody CREQ request) {
         return ResponseEntity.ok(service.create(request));
     }
 
@@ -35,7 +36,7 @@ public abstract class BaseController<CREQ, UREQ, RES, ID> {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<RES> update(@PathVariable ID id, @RequestBody UREQ request) {
+    public ResponseEntity<RES> update(@Valid @PathVariable ID id, @RequestBody UREQ request) {
         return ResponseEntity.ok(service.update(id, request));
     }
 

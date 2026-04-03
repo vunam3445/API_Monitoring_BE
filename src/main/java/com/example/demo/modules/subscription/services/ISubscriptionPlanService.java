@@ -16,5 +16,5 @@ public interface ISubscriptionPlanService
         extends ICrudService<CreatePlanRequest, UpdatePlanRequest, PlanResponse, UUID> {
 
     // Có thể thêm các phương thức đặc thù cho SubscriptionPlan tại đây
-    // Ví dụ: PlanResponse findByName(String name);
+    java.util.List<PlanResponse> findAllWithUserStatus(UUID userId);
 }

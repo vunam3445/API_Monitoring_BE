@@ -19,7 +19,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
         // Bạn có thể viết JSON chi tiết hơn ở đây
         String jsonResponse = String.format(
                 "{\"status\": 401, \"error\": \"Unauthorized\", \"message\": \"%s\"}",
-                "Token hết hạn hoặc không hợp lệ"
+                "Xác thực không hợp lệ hoặc đã hết hạn"
         );
         System.out.println("Lỗi xác thực: " + authException.getMessage());
         response.getWriter().write(jsonResponse);

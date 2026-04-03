@@ -1,4 +1,5 @@
 package com.example.demo.common.config;
+
 import com.example.demo.common.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -18,6 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 import java.util.List;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity // Kích hoạt bảo mật ở mức Method
@@ -26,9 +28,10 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
     private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
+
     // password encoder
     @Bean
-    public BCryptPasswordEncoder passwordEncoder(){
+    public BCryptPasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
@@ -41,8 +44,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .requestMatchers("/api/payment/vnpay-return").permitAll() // Cho phép VNPay callback không cần
+                                                                                  // token
+                        .requestMatchers("/error").permitAll()
+                        .anyRequest().authenticated())
                 // 2. CHÈN DÒNG NÀY: Kết nối Provider và Filter vào chuỗi bảo mật
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
@@ -54,6 +59,7 @@ public class SecurityConfig {
 
         return http.build();
     }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
@@ -62,7 +68,7 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of("http://localhost:5173"));
 
         // Cho phép các phương thức HTTP
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
         // Cho phép các Header cần thiết
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));

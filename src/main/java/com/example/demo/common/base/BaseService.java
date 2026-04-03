@@ -55,7 +55,7 @@ public abstract class BaseService<T, ID, CREQ, UREQ, RES> implements ICrudServic
     @Transactional
     public RES create(CREQ requestDto) {
         T entity = mapper.toEntity(requestDto);
-        T savedEntity = repository.save(entity);
+        T savedEntity = repository.saveAndFlush(entity);
 
         // Xóa cache danh sách sau khi tạo mới
         evictListCache();
@@ -73,7 +73,7 @@ public abstract class BaseService<T, ID, CREQ, UREQ, RES> implements ICrudServic
         // MapStruct: cập nhật entity từ DTO, tự bỏ qua field null nhờ NullValuePropertyMappingStrategy.IGNORE
         mapper.updateEntityFromDto(requestDto, existingEntity);
 
-        T updatedEntity = repository.save(existingEntity);
+        T updatedEntity = repository.saveAndFlush(existingEntity);
 
         // Xóa cache object và danh sách sau khi update
         evictObjectCache(id);
@@ -94,7 +94,7 @@ public abstract class BaseService<T, ID, CREQ, UREQ, RES> implements ICrudServic
     // 4. FIND ALL (Phân trang)
     @Override
     @Cacheable(value = CACHE_LIST,
-            key = "#root.target.getObjectName() + ':page_' + #pageable.pageNumber + '_size_' + #pageable.pageSize",
+            key = "#root.target.getObjectName() + ':page_' + #pageable.pageNumber + '_size_' + #pageable.pageSize + '_sort_' + #pageable.sort.toString().replaceAll(':', '_')",
             unless = "#result == null")
     public Page<RES> findAll(Pageable pageable) {
         Page<T> entityPage = repository.findAll(pageable);

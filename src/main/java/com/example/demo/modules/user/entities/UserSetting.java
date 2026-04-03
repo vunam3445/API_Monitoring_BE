@@ -46,6 +46,9 @@ public class UserSetting {
 
     private String telegramChatId; // ID cuộc trò chuyện nhận tin nhắn từ Bot
 
+    @Column(name = "re_notification_interval_minutes")
+    private Integer reNotificationIntervalMinutes = 60; // Gửi lại thông báo sau X phút nếu chưa được phục hồi
+
     // --- GROUP 3: MONITORING SETTINGS (Cấu hình vận hành) ---
 
     private Integer checkInterval = 300; // Tần suất kiểm tra mặc định (đơn vị: giây)
