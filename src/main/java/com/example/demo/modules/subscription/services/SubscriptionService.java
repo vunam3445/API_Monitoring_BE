@@ -10,6 +10,7 @@ import com.example.demo.modules.subscription.repositories.SubscriptionPlanReposi
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 import com.example.demo.modules.user.entities.User;
 import com.example.demo.modules.user.repositories.UserRepository;
+import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final SubscriptionPlanRepository planRepository;
     private final UserRepository userRepository;
+    private final DashboardCacheService dashboardCacheService;
 
     /**
      * Kích hoạt gói FREE cho người dùng (Không qua cổng thanh toán)
@@ -56,5 +58,6 @@ public class SubscriptionService {
         subscription.setPaymentStatus(PaymentStatus.FREE);
 
         subscriptionRepository.save(subscription);
+        dashboardCacheService.clearUserDashboardCache(user.getId());
     }
 }

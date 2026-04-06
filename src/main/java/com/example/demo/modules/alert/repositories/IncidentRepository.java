@@ -45,4 +45,16 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.status = com.example.demo.modules.alert.enums.IncidentStatus.RESOLVED AND i.triggeredAt >= :since")
     long countResolvedAlerts(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT " +
+           "i.monitor_id AS monitorId, " +
+           "COUNT(*) AS incidentCount, " +
+           "SUM(EXTRACT(EPOCH FROM (COALESCE(i.resolved_at, CURRENT_TIMESTAMP) - i.triggered_at)) / 60) AS downtimeMinutes " +
+           "FROM incidents i " +
+           "JOIN monitors m ON i.monitor_id = m.id " +
+           "WHERE m.user_id = :userId " +
+           "AND i.triggered_at >= :since " +
+           "GROUP BY i.monitor_id",
+           nativeQuery = true)
+    List<Object[]> getIncidentStats(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
 }

@@ -19,6 +19,7 @@ import com.example.demo.modules.monitor.lock.DistributedLockService;
 import com.example.demo.modules.monitor.messaging.MonitorProducer;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.repositories.UserRepository;
+import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -42,6 +43,7 @@ public class MonitorService
     private final MonitorProducer monitorProducer;
     private final ISecurityContextService iSecurityContextService;
     private final UserRepository userRepository;
+    private final DashboardCacheService dashboardCacheService;
 
     public MonitorService(
             MonitorRepository repository,
@@ -50,6 +52,7 @@ public class MonitorService
             DistributedLockService lockService,
             ISecurityContextService iSecurityContextService,
             UserRepository userRepository,
+            DashboardCacheService dashboardCacheService,
             MonitorProducer monitorProducer) {
         super(repository, mapper, cacheService);
         this.monitorRepository = repository;
@@ -57,6 +60,7 @@ public class MonitorService
         this.monitorProducer = monitorProducer;
         this.iSecurityContextService = iSecurityContextService;
         this.userRepository = userRepository;
+        this.dashboardCacheService = dashboardCacheService;
     }
 
     @Override
@@ -73,6 +77,7 @@ public class MonitorService
         evictListCache();
         cacheService.evict("monitoring:summary:" + monitor.getUserId());
         cacheService.evict("monitoring:key-health:" + monitor.getUserId());
+        dashboardCacheService.clearUserDashboardCache(monitor.getUserId());
     }
 
     @Override
@@ -113,6 +118,7 @@ public class MonitorService
         // Invalidate monitoring summary cache
         cacheService.evict("monitoring:summary:" + monitor.getUserId());
         cacheService.evict("monitoring:key-health:" + monitor.getUserId());
+        dashboardCacheService.clearUserDashboardCache(monitor.getUserId());
 
         return repository.save(monitor).getIsActive();
     }
@@ -174,6 +180,7 @@ public class MonitorService
 
         // Xóa cache danh sách
         evictListCache();
+        dashboardCacheService.clearUserDashboardCache(user.getId());
 
         return mapper.toResponse(savedMonitor);
     }

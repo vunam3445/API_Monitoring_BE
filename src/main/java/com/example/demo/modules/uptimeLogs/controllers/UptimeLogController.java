@@ -8,9 +8,21 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.data.jpa.domain.Specification;
+import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsSpecification;
+import com.example.demo.modules.uptimeLogs.dto.ExportLogsRequest;
+import com.example.demo.modules.uptimeLogs.services.ILogExportService;
+import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
+import com.example.demo.common.security.ISecurityContextService;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.time.format.DateTimeFormatter;
+import java.io.IOException;
 
 /**
  * Controller cho UptimeLogs - chỉ expose các endpoint đọc.
@@ -24,6 +36,13 @@ import java.util.UUID;
 public class UptimeLogController {
 
     private final IUptimeLogService uptimeLogService;
+    private final ILogExportService logExportService;
+    private final ISecurityContextService securityContextService;
+
+    private UUID getUserId() {
+        return securityContextService.getCurrentUserId()
+                .orElseThrow(() -> new RuntimeException("Bạn cần đăng nhập để thao tác."));
+    }
 
     /**
      * Lấy lịch sử uptime logs của một monitor (phân trang).
@@ -76,6 +95,44 @@ public class UptimeLogController {
             Pageable pageable) {
         return ResponseEntity.ok(
                 uptimeLogService.findLogsByUser(userId, search, statusCode, method, pageable));
+    }
+
+    /**
+     * Xuất toàn bộ logs của chính người dùng theo thời gian ra file CSV
+     *
+     * GET /api/uptime-logs/export
+     */
+    @GetMapping("/export")
+    public void exportUserLogs(
+            @Valid ExportLogsRequest request,
+            HttpServletResponse response) throws IOException {
+
+        // Task 8: Validate input
+        if (request.getFrom().isAfter(request.getTo())) {
+            response.sendError(HttpStatus.BAD_REQUEST.value(), "'from' date must be before 'to' date");
+            return;
+        }
+
+        if (request.getFrom().plusDays(30).isBefore(request.getTo())) {
+            response.sendError(HttpStatus.BAD_REQUEST.value(), "Time range cannot exceed 30 days");
+            return;
+        }
+
+        // Task 7: Phân quyền tuyệt đối - Chỉ sử dụng UserId từ Security Context
+        UUID userId = getUserId();
+        Specification<UptimeLogs> spec = Specification.where(UptimeLogsSpecification.hasUserId(userId));
+        
+        // Thêm điều kiện khoảng thời gian
+        spec = spec.and((root, query, cb) -> cb.between(root.get("checkedAt"), request.getFrom(), request.getTo()));
+
+        // Task 6: Trả về HTTP Headers cho file CSV tải xuống
+        String filename = "logs_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) + ".csv";
+        response.setContentType("text/csv");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+        response.setCharacterEncoding("UTF-8");
+
+        // Gọi Layer Service stream thẳng ra trình duyệt
+        logExportService.exportLogsToCsv(spec, response.getWriter());
     }
 }
 

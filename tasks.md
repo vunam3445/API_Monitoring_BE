@@ -1,669 +1,442 @@
-task.md
-Backend Tasks - Alerts Module
+TASK: Backend APIs for Dashboard Page
 1. Mục tiêu
-Xây dựng backend cho chức năng Alerts để:
-tạo incident từ kết quả monitor check
-gửi cảnh báo qua Email và Slack Webhook
-lưu lịch sử gửi cảnh báo
-cung cấp API phục vụ tab Alerts
-hỗ trợ summary cards, list, filter, pagination, export
-bổ sung Redis caching để giảm tải query và tăng tốc UI
-Hệ thống hiện có:
-`alert_configs`: cấu hình kênh nhận alert theo monitor
-`incidents`: sự cố gốc để render tab Alerts
-`alert_deliveries`: log gửi notification theo từng kênh
-SMTP Brevo đã cấu hình qua env:
-`SMTP_BREVO_HOST=smtp-relay.brevo.com`
-`SMTP_BREVO_PORT=587`
-`SMTP_BREVO_USERNAME=...`
-`SMTP_BREVO_PASSWORD=...`
+Hoàn thiện các API backend để render đầy đủ giao diện Dashboard / System Overview theo mockup đã cung cấp, có Redis caching, và có cơ chế kiểm tra API đã tồn tại thì bỏ qua, chỉ code phần còn thiếu.
 ---
-2. Data model đang dùng
-2.1. `alert_configs`
-Ý nghĩa:
-cấu hình kênh nhận cảnh báo cho từng monitor
-Field chính:
-`monitor_id`
-`type`: `EMAIL`, `SLACK`, ...
-`destination`
-`is_enabled`
-2.2. `incidents`
-Ý nghĩa:
-sự cố gốc để hiển thị trên tab Alerts
-Field chính:
-`monitor_id`
-`type`: `API_DOWN`, `TIMEOUT`, `SLOW_RESPONSE`, `STATUS_CODE_ERROR`
-`severity`: `INFO`, `WARNING`, `CRITICAL`
-`status`: `ACTIVE`, `ACKNOWLEDGED`, `RESOLVED`
-`title`
-`message`
-`triggered_at`
-`resolved_at`
-`last_seen_at`
-2.3. `alert_deliveries`
-Ý nghĩa:
-log gửi notification theo từng kênh
-Field chính:
-`incident_id`
-`alert_config_id`
-`channel`
-`destination`
-`status`: `PENDING`, `SENT`, `FAILED`
-`message`
-`error_message`
-`retry_count`
-`sent_at`
+2. Nguyên tắc thực hiện
+2.1. Rule kiểm tra trước khi code
+Trước khi implement bất kỳ API/service/repository/query nào, cần kiểm tra:
+Đã có controller endpoint đó chưa.
+Đã có service method xử lý nghiệp vụ đó chưa.
+Đã có repository query hoặc specification phục vụ dữ liệu đó chưa.
+Đã có DTO/response model phù hợp chưa.
+2.2. Cách xử lý
+Nếu đã có API đáp ứng đúng nghiệp vụ và response gần đúng FE cần:
+Không code lại.
+Chỉ refactor nhỏ hoặc mở rộng response nếu thực sự cần.
+Nếu đã có một phần:
+Tái sử dụng phần cũ.
+Chỉ bổ sung field thiếu, query thiếu, cache thiếu.
+Nếu chưa có:
+Mới tạo controller/service/repository/DTO đầy đủ.
+2.3. Yêu cầu bắt buộc khi review code trước khi làm
+Cần rà soát các thành phần hiện có liên quan đến:
+`monitors`
+`uptime_logs`
+`incidents` / `alerts` / `alert_deliveries` nếu đã có
+dashboard/statistics/report APIs đã tồn tại
+redis cache service hiện tại trong project
+pagination/filter DTO đã có sẵn
+base response / generic response đang dùng trong project
 ---
-3. Nghiệp vụ tổng quát
-3.1. Khi monitor check thất bại hoặc vượt ngưỡng
-Backend phải:
-phân tích kết quả check
-xác định có tạo incident hay không
-nếu chưa có incident active cùng loại thì tạo mới
-nếu đã có incident active thì update `last_seen_at`, counter, dữ liệu mới nhất
-gửi notification theo các `alert_configs` đang bật
-lưu từng lần gửi vào `alert_deliveries`
-xóa/invalidate các cache liên quan trong Redis
-3.2. Khi monitor hồi phục
-Backend phải:
-tìm incident đang `ACTIVE` hoặc `ACKNOWLEDGED`
-chuyển sang `RESOLVED`
-set `resolved_at`
-nếu có rule gửi recovery notification thì gửi email/slack
-lưu log vào `alert_deliveries`
-xóa/invalidate cache summary và list liên quan
----
-4. Task code theo lớp
-4.1. Entity & Enum
-hoàn thiện 3 entity:
-`AlertConfig`
-`Incident`
-`AlertDelivery`
-hoàn thiện enum:
-`AlertChannelType`
-`IncidentType`
-`IncidentSeverity`
-`IncidentStatus`
-`AlertDeliveryStatus`
-Yêu cầu
-dùng `@Enumerated(EnumType.STRING)`
-thêm index cho các field query nhiều:
-`incidents.monitor_id`
-`incidents.status`
-`incidents.severity`
-`incidents.triggered_at`
-`alert_deliveries.incident_id`
-`alert_deliveries.status`
-`alert_configs.monitor_id`
-`alert_configs.type`
----
-4.2. Repository
-Tạo repository cho:
-`AlertConfigRepository`
-`IncidentRepository`
-`AlertDeliveryRepository`
-Query cần có
-`AlertConfigRepository`
-tìm tất cả config đang bật theo monitor
-tìm config theo monitor + channel
-kiểm tra monitor có email/slack config không
-`IncidentRepository`
-tìm incident active theo monitor + type
-tìm incident theo id
-filter incidents theo:
-search
-status
-severity
-type
-time range
-count summary:
-total alerts
-active alerts
-critical alerts
-resolved alerts
-`AlertDeliveryRepository`
-lấy lịch sử gửi theo incident
-đếm số lần gửi fail
-lấy delivery gần nhất theo incident + channel
----
-4.3. Incident rule evaluator
-Tạo service:
-`IncidentRuleEvaluator`
-Input
-monitor
-kết quả check/uptime log
-user setting (nếu cần default threshold)
-Output
-có tạo incident hay không
-incident type
-severity
-title
-message
-Rule tối thiểu
-timeout -> `TIMEOUT`
-service unreachable / connection failed -> `API_DOWN`
-response time > threshold -> `SLOW_RESPONSE`
-status code 5xx hoặc status không mong muốn -> `STATUS_CODE_ERROR`
-Severity gợi ý
-`API_DOWN` -> `CRITICAL`
-`TIMEOUT` -> `WARNING` hoặc `CRITICAL` tùy số lần lặp
-`SLOW_RESPONSE` -> `WARNING`
-`STATUS_CODE_ERROR` -> `WARNING`
----
-4.4. Incident service
-Tạo:
-`IncidentService`
-Nhiệm vụ
-tạo incident mới
-update incident đang active
-resolve incident khi monitor hồi phục
-tránh tạo incident trùng
-Logic tránh trùng
-1 monitor chỉ nên có 1 incident `ACTIVE` hoặc `ACKNOWLEDGED` cho cùng `type`
-nếu check tiếp tục fail cùng loại:
-không tạo record mới
-chỉ update:
-`last_seen_at`
-`consecutive_fail_count`
-`avg_latency_ms`
-`last_status_code`
-`message`
-Redis liên quan
-sau khi create/update/resolve incident:
-invalidate cache summary
-invalidate cache first-page list phổ biến
-invalidate cache detail của incident nếu có
----
-4.5. Notification dispatcher
-Tạo:
-`AlertNotificationDispatcher`
-Nhiệm vụ
-nhận 1 `incident`
-load tất cả `alert_configs` đang bật của monitor
-gửi notification theo từng config
-tạo `alert_deliveries`
-Yêu cầu
-không viết cứng email/slack trong service
-dispatch theo `channel`
-dễ mở rộng thêm telegram/webhook/discord sau này
----
-4.6. Email sender qua Brevo SMTP
-Tạo:
-`EmailSenderService`
-Cấu hình
-Đọc từ env:
-`SMTP_BREVO_HOST`
-`SMTP_BREVO_PORT`
-`SMTP_BREVO_USERNAME`
-`SMTP_BREVO_PASSWORD`
-Task
-cấu hình `JavaMailSender`
-gửi mail HTML qua Brevo SMTP
-set timeout hợp lý
-bắt exception rõ ràng
-Subject gợi ý
-`[CRITICAL] Authentication Svc is DOWN`
-`[WARNING] Payment Gateway slow response`
-`[RESOLVED] Authentication Svc recovered`
-Nội dung email tối thiểu
-Monitor/API name
-Endpoint
-Incident type
-Severity
-Message
-Triggered time
-Link tới dashboard nếu có
-Yêu cầu kỹ thuật
-không log password SMTP
-không hardcode username/password
-gửi email theo async/queue, không block request chính
----
-4.7. Slack webhook sender
-Tạo:
-`SlackWebhookSenderService`
-Task
-gửi HTTP POST tới webhook URL
-build payload rõ ràng theo incident
-Nội dung message tối thiểu
-severity
+3. Phạm vi giao diện cần hỗ trợ
+Dashboard hiện tại cần dữ liệu cho các block sau:
+3.1. Summary cards
+Total Monitors
+Currently Down
+24h Uptime
+Avg Latency
+Có thêm delta/trend so với kỳ trước để hiển thị `+4`, `-2`, `+0.02%`, `+12ms`
+3.2. Charts / widgets
+Avg. Response Time - Last 24H (bar chart)
+Error Rate (%) - Global theo từng service/monitor nhóm
+API Uptime (gauge / donut)
+3.3. Unstable monitors section
+Top 5 Unstable Monitors
+Mỗi monitor hiển thị:
+rank
+monitor id
 monitor name
-endpoint
-incident type
-message
-triggered time
-Yêu cầu
-timeout ngắn
-retry nếu lỗi tạm thời
-không log full webhook URL
-response fail phải lưu vào `alert_deliveries.error_message`
+downtime duration
+incident count
+health score / stability score
+status color
+3.4. Plan usage widget
+Current plan
+Monitor usage: số monitor đã dùng / quota tối đa
+remaining slots
+CTA upgrade chỉ cần BE trả dữ liệu plan/quota, FE tự render button
+3.5. System suggestion
+Gợi ý dạng text như:
+monitor nào có error rate cao nhất
+nên review check interval / timeout / expected status
+Có thể trả về rule-based suggestion, chưa cần AI
 ---
-4.8. Alert delivery service
-Tạo:
-`AlertDeliveryService`
-Nhiệm vụ
-tạo record `PENDING`
-update sang `SENT` nếu gửi thành công
-update sang `FAILED` nếu gửi lỗi
-tăng `retry_count` khi retry
-Flow chuẩn
-tạo `alert_deliveries` status = `PENDING`
-gọi sender tương ứng
-nếu thành công:
-status = `SENT`
-set `sent_at`
-nếu thất bại:
-status = `FAILED`
-set `error_message`
----
-5. Redis caching
-5.1. Mục tiêu cache
-Dùng Redis để:
-giảm tải aggregate query cho summary cards
-giảm tải query list alerts page đầu
-giảm tải query alert detail truy cập lặp lại
-hỗ trợ invalidate nhanh khi incident thay đổi
-5.2. Dữ liệu nên cache
-A. Summary cards
-API:
-`GET /api/v1/alerts/summary`
-Cache key:
-`alerts:summary:{userId}:{range}`
-TTL gợi ý:
-30s đến 60s
-B. Alerts list page đầu
-API:
-`GET /api/v1/alerts`
-Chỉ cache các case phổ biến:
-`page=0 hoặc 1`
-`size=10 hoặc 20`
-sort mặc định `triggered_at desc`
-filter đơn giản
-không cache search quá dài hoặc custom date phức tạp
-Cache key gợi ý:
-`alerts:list:{userId}:{hash(filters)}`
-TTL gợi ý:
-20s đến 60s
-C. Alert detail
-API:
-`GET /api/v1/alerts/{id}`
-Cache key:
-`alerts:detail:{incidentId}`
-TTL gợi ý:
-30s đến 120s
-5.3. Invalidate cache khi nào
-Phải xóa cache khi:
-tạo incident mới
-update incident active
-acknowledge incident
-resolve incident
-tạo delivery mới nếu API detail có hiển thị delivery history
-cập nhật/xóa/toggle `alert_configs` nếu API detail hoặc test endpoint phụ thuộc dữ liệu config
-5.4. Service cache
-Tạo:
-`AlertCacheService`
-Nhiệm vụ
-build key cache thống nhất
-get/set cache
-invalidate theo incident
-invalidate summary theo user
-invalidate list phổ biến theo user
-5.5. Yêu cầu triển khai
-không cache dữ liệu nhạy cảm như SMTP password
-cache object response DTO, không cache entity JPA trực tiếp
-với dữ liệu thay đổi thường xuyên, ưu tiên TTL ngắn + invalidate chủ động
-fallback về DB bình thường nếu Redis lỗi
----
-6. API phục vụ tab Alerts
-6.1. GET `/api/v1/alerts/summary`
-Mục tiêu:
-lấy dữ liệu cho 4 summary cards
-Query params
-`range=24h|7d|30d`
+4. Đề xuất API cần có
+4.1. Dashboard summary API
+Endpoint
+`GET /api/v1/dashboard/summary`
+Mục đích
+Trả dữ liệu cho 4 card đầu trang.
 Response mẫu
 ```json
 {
-  "totalAlerts": {
-    "value": 1284,
-    "changePercent": 12.0
+  "totalMonitors": 128,
+  "currentlyDown": 4,
+  "uptime24h": 99.98,
+  "avgLatencyMs": 245,
+  "trends": {
+    "totalMonitorsDelta": 4,
+    "currentlyDownDelta": -2,
+    "uptime24hDelta": 0.02,
+    "avgLatencyDeltaMs": 12
   },
-  "activeAlerts": {
-    "value": 24,
-    "urgentCount": 2
-  },
-  "criticalAlerts": {
-    "value": 6,
-    "actionRequired": true
-  },
-  "resolvedAlerts": {
-    "value": 1254,
-    "successRate": 98.0
-  }
+  "comparisonWindow": "previous_24h"
 }
 ```
-Logic
-`totalAlerts`: số incident tạo trong range
-`activeAlerts`: số incident `ACTIVE`
-`urgentCount`: số incident `ACTIVE` và `CRITICAL`
-`criticalAlerts`: số incident severity = `CRITICAL` và chưa resolved
-`resolvedAlerts`: số incident `RESOLVED`
-`successRate`: `resolved / total * 100`
-Redis
-cache response bằng key `alerts:summary:{userId}:{range}`
+Nghiệp vụ
+`totalMonitors`: tổng số monitor đang active của user.
+`currentlyDown`: số monitor có trạng thái down tại thời điểm hiện tại.
+`uptime24h`: uptime trung bình 24h gần nhất.
+`avgLatencyMs`: latency trung bình 24h gần nhất.
+Trend được tính bằng cách so sánh với 24h liền trước đó.
 ---
-6.2. GET `/api/v1/alerts`
-Mục tiêu:
-lấy danh sách incident để render table
-Query params
-`page`
-`size`
-`search`
-`status`
-`severity`
-`type`
-`range`
-`from`
-`to`
-`sort`
-Cột cần trả ra
-`id`
-`time`
-`apiName`
-`endpoint`
-`alertType`
-`severity`
-`status`
-`message`
+4.2. Dashboard response time chart API
+Endpoint
+`GET /api/v1/dashboard/charts/response-time?range=24h&bucket=hour`
+Mục đích
+Render chart Avg. Response Time.
 Response mẫu
 ```json
 {
+  "range": "24h",
+  "bucket": "hour",
+  "points": [
+    { "time": "2026-04-02T00:00:00", "avgLatencyMs": 210 },
+    { "time": "2026-04-02T01:00:00", "avgLatencyMs": 225 },
+    { "time": "2026-04-02T02:00:00", "avgLatencyMs": 240 }
+  ]
+}
+```
+Nghiệp vụ
+Dữ liệu được bucket theo giờ.
+Mỗi bucket tính trung bình latency từ `uptime_logs`.
+Chỉ lấy monitor thuộc user hiện tại.
+Nếu không có data ở bucket nào thì trả `0` hoặc `null` theo convention thống nhất với FE.
+---
+4.3. Dashboard error rate API
+Endpoint
+`GET /api/v1/dashboard/error-rate?range=24h&limit=5`
+Mục đích
+Render block Error Rate (%).
+Response mẫu
+```json
+{
+  "range": "24h",
   "items": [
     {
-      "id": "uuid",
-      "time": "2026-04-02T12:04:12",
-      "apiName": "Authentication Svc",
-      "endpoint": "/v1/auth/login",
-      "alertType": "API_DOWN",
-      "severity": "CRITICAL",
-      "status": "ACTIVE",
-      "message": "Service unreachable from us-east-1 region"
+      "monitorId": "uuid-1",
+      "monitorName": "Auth Service",
+      "errorRate": 0.12,
+      "totalChecks": 1200,
+      "failedChecks": 1,
+      "severity": "LOW"
+    },
+    {
+      "monitorId": "uuid-2",
+      "monitorName": "Payments",
+      "errorRate": 4.85,
+      "totalChecks": 900,
+      "failedChecks": 44,
+      "severity": "MEDIUM"
     }
-  ],
-  "page": 1,
-  "size": 10,
-  "totalItems": 1284,
-  "totalPages": 129
+  ]
 }
 ```
-Search cần hỗ trợ
-monitor name
-endpoint/url
-incident title
-incident message
-Sort mặc định
-`triggered_at desc`
-Redis
-chỉ cache first-page query phổ biến
-key: `alerts:list:{userId}:{hash(filters)}`
+Nghiệp vụ
+`errorRate = failedChecks / totalChecks * 100`
+Có rule phân loại severity:
+`LOW`: < 1%
+`MEDIUM`: 1% - < 5%
+`HIGH`: >= 5%
+Sắp xếp giảm dần theo error rate.
 ---
-6.3. GET `/api/v1/alerts/{id}`
-Mục tiêu:
-xem chi tiết 1 incident
-Response nên có
-incident info
-monitor info
-delivery logs
-timeline:
-triggered
-last seen
-resolved
-delivery history
-Redis
-cache response detail ngắn hạn theo `incidentId`
----
-6.4. PATCH `/api/v1/alerts/{id}/acknowledge`
-Mục tiêu:
-xác nhận đã thấy alert
-Logic
-chỉ incident `ACTIVE` mới được acknowledge
-update status sang `ACKNOWLEDGED`
-invalidate summary, list, detail cache
----
-6.5. PATCH `/api/v1/alerts/{id}/resolve`
-Mục tiêu:
-resolve thủ công nếu cần
-Logic
-update status sang `RESOLVED`
-set `resolved_at`
-invalidate summary, list, detail cache
----
-6.6. GET `/api/v1/alerts/export`
-Mục tiêu:
-export incident list theo bộ lọc hiện tại
-Query params
-giống API list
-Output
-CSV
-Cột export
-Time
-API Name
+4.4. Dashboard uptime gauge API
 Endpoint
-Alert Type
-Severity
-Status
-Message
-Triggered At
-Resolved At
-Redis
-không cache file export
-nếu cần có thể dùng Redis lưu trạng thái export job trong tương lai
----
-7. API quản lý cấu hình alert
-7.1. GET `/api/v1/monitors/{monitorId}/alert-configs`
-Mục tiêu:
-lấy toàn bộ config alert của monitor
-7.2. POST `/api/v1/monitors/{monitorId}/alert-configs`
-Mục tiêu:
-tạo config mới cho Email hoặc Slack
-Request mẫu - Email
+`GET /api/v1/dashboard/uptime-gauge?range=24h`
+Mục đích
+Render widget donut/gauge API uptime.
+Response mẫu
 ```json
 {
-  "type": "EMAIL",
-  "destination": "ops@company.com",
-  "isEnabled": true
+  "range": "24h",
+  "uptimePercentage": 99.2,
+  "successfulChecks": 12400,
+  "totalChecks": 12500
 }
 ```
-Request mẫu - Slack
+Nghiệp vụ
+Tính uptime tổng hợp trên toàn bộ monitor của user trong 24h.
+Có thể tái sử dụng logic summary nếu phù hợp.
+---
+4.5. Top unstable monitors API
+Endpoint
+`GET /api/v1/dashboard/unstable-monitors?range=7d&limit=5`
+Mục đích
+Render block Top 5 Unstable Monitors.
+Response mẫu
 ```json
 {
-  "type": "SLACK",
-  "destination": "https://hooks.slack.com/services/xxx",
-  "isEnabled": true
+  "range": "7d",
+  "items": [
+    {
+      "rank": 1,
+      "monitorId": "uuid-1",
+      "monitorName": "Inventory API",
+      "downtimeMinutes": 252,
+      "incidentCount": 12,
+      "errorRate": 12.4,
+      "stabilityScore": 41.2,
+      "currentStatus": "DOWN",
+      "statusColor": "RED"
+    }
+  ]
 }
 ```
-Validate
-EMAIL:
-destination phải đúng format email
-SLACK:
-destination phải là webhook URL hợp lệ
-Redis
-sau create/update/delete/toggle config:
-invalidate cache detail monitor nếu có
-invalidate cache liên quan nếu list/detail có hiển thị config
-7.3. PUT `/api/v1/monitors/{monitorId}/alert-configs/{id}`
-Mục tiêu:
-cập nhật config
-7.4. PATCH `/api/v1/monitors/{monitorId}/alert-configs/{id}/toggle`
-Mục tiêu:
-bật/tắt config
-7.5. DELETE `/api/v1/monitors/{monitorId}/alert-configs/{id}`
-Mục tiêu:
-xóa config
+Nghiệp vụ
+Xếp hạng monitor không ổn định dựa trên score tổng hợp. Có thể dùng công thức rule-based như:
+```text
+stabilityScore = 100
+                 - (downtimeWeight * downtimeMinutes)
+                 - (incidentWeight * incidentCount)
+                 - (errorRateWeight * errorRate)
+```
+Hoặc chuẩn hóa về thang điểm 0-100.
+Gợi ý trọng số
+downtime: 0.4
+incident count: 0.3
+error rate: 0.3
+Kết quả
+Sort tăng dần theo stability score hoặc giảm dần theo mức độ bất ổn.
+Chỉ lấy top `limit`.
 ---
-8. API test gửi notification
-8.1. POST `/api/v1/alerts/test/email`
-Mục tiêu:
-test Brevo SMTP có hoạt động không
-Request
+4.6. Dashboard plan usage API
+Endpoint
+`GET /api/v1/dashboard/plan-usage`
+Mục đích
+Render widget Current Plan.
+Response mẫu
 ```json
 {
-  "to": "your_email@example.com"
+  "planName": "Professional",
+  "monitorLimit": 20,
+  "usedMonitors": 15,
+  "remainingMonitors": 5,
+  "usagePercentage": 75,
+  "canUpgrade": true
 }
 ```
-Logic
-gửi 1 email test đơn giản
-trả về success/fail
-8.2. POST `/api/v1/alerts/test/slack`
-Mục tiêu:
-test Slack webhook
-Request
+Nghiệp vụ
+Lấy từ subscription hiện tại của user hoặc plan hiện tại trong user/profile/subscription.
+Nếu chưa có subscription thì fallback theo free plan.
+`usedMonitors`: số monitor đang active.
+`monitorLimit`: quota từ subscription plan.
+---
+4.7. Dashboard suggestion API
+Endpoint
+`GET /api/v1/dashboard/suggestions`
+Mục đích
+Render block System Suggestion.
+Response mẫu
 ```json
 {
-  "webhookUrl": "https://hooks.slack.com/services/xxx"
+  "title": "SYSTEM SUGGESTION",
+  "message": "Inventory API has the highest error rate. Consider reviewing check interval, timeout, and expected status.",
+  "relatedMonitorId": "uuid-1",
+  "relatedMonitorName": "Inventory API",
+  "suggestionType": "HIGH_ERROR_RATE"
 }
 ```
-Logic
-gửi 1 message test đơn giản
-trả về success/fail
+Nghiệp vụ
+Rule-based:
+Nếu có monitor có error rate cao nhất và vượt ngưỡng cảnh báo => sinh suggestion.
+Nếu không, fallback sang monitor có downtime cao nhất.
+Nếu toàn hệ thống ổn định => trả message mặc định tích cực.
 ---
-9. DTO cần tạo
-Alert config
-`CreateAlertConfigRequest`
-`UpdateAlertConfigRequest`
-`AlertConfigResponse`
-Incident
-`AlertListItemResponse`
-`AlertListResponse`
-`AlertSummaryResponse`
-`AlertDetailResponse`
-Test notification
-`SendTestEmailRequest`
-`SendTestSlackWebhookRequest`
+4.8. Optional: Dashboard aggregate API
+Nếu muốn giảm số lượng request từ FE, có thể thêm API tổng hợp:
+Endpoint
+`GET /api/v1/dashboard/overview`
+Mục đích
+Trả toàn bộ dữ liệu dashboard trong một lần gọi.
+Gợi ý
+API này có thể orchestration từ các service con:
+summary
+response time chart
+error rate
+uptime gauge
+unstable monitors
+plan usage
+suggestion
+Lưu ý:
+Nếu project đang ưu tiên FE load nhanh bằng 1 request, nên làm.
+Nếu project đang có sẵn các endpoint nhỏ, có thể giữ các API riêng và chỉ thêm overview nếu cần.
 ---
-10. Service cần tạo
-`IncidentRuleEvaluator`
-`IncidentService`
-`AlertQueryService`
-`AlertSummaryService`
-`AlertExportService`
-`AlertNotificationDispatcher`
-`AlertDeliveryService`
-`EmailSenderService`
-`SlackWebhookSenderService`
-`AlertConfigService`
-`AlertCacheService`
+5. Redis caching requirements
+5.1. Mục tiêu cache
+Giảm số lần query aggregate nặng lên PostgreSQL, đặc biệt các API dashboard được gọi thường xuyên.
+5.2. Các API cần cache
+Ưu tiên cache cho:
+`GET /dashboard/summary`
+`GET /dashboard/charts/response-time`
+`GET /dashboard/error-rate`
+`GET /dashboard/uptime-gauge`
+`GET /dashboard/unstable-monitors`
+`GET /dashboard/plan-usage`
+`GET /dashboard/suggestions`
+`GET /dashboard/overview` nếu có
+5.3. Cache key convention
+Format gợi ý:
+```text
+dashboard:summary:{userId}
+dashboard:response-time:{userId}:{range}:{bucket}
+dashboard:error-rate:{userId}:{range}:{limit}
+dashboard:uptime-gauge:{userId}:{range}
+dashboard:unstable-monitors:{userId}:{range}:{limit}
+dashboard:plan-usage:{userId}
+dashboard:suggestions:{userId}
+dashboard:overview:{userId}:{range}
+```
+5.4. TTL gợi ý
+Summary: `60 - 120s`
+Response time chart: `60 - 300s`
+Error rate: `60 - 300s`
+Uptime gauge: `60 - 120s`
+Unstable monitors: `300s`
+Plan usage: `300 - 900s`
+Suggestions: `120 - 300s`
+Overview: `60 - 180s`
+5.5. Invalidate cache
+Khi có thay đổi dữ liệu liên quan, cần xóa cache theo pattern hoặc theo key cụ thể:
+monitor được tạo/sửa/xóa/enable/disable
+có log check mới được ghi vào `uptime_logs`
+incident mới phát sinh hoặc incident được resolve
+subscription/user plan thay đổi
+Yêu cầu
+Viết helper/service để clear cache dashboard theo `userId`.
+Không hardcode xóa từng key rời rạc trong controller.
+Gom vào `DashboardCacheService` hoặc tương đương.
 ---
-11. Controller cần tạo
-`AlertController`
-`AlertConfigController`
-`AlertTestController`
+6. Yêu cầu dữ liệu và query
+6.1. Nguồn dữ liệu chính
+Ưu tiên dùng:
+`monitors`
+`uptime_logs`
+`incidents` nếu đã có
+`subscriptions` / `subscription_plans` / `users.plan_type` tùy cấu trúc hiện tại
+6.2. Query aggregate cần tối ưu
+Cần tối ưu các query dạng:
+count monitor theo status
+avg latency theo time bucket
+uptime % theo khoảng thời gian
+failed checks / total checks
+tổng downtime theo monitor
+số incident theo monitor
+top unstable monitors
+6.3. Yêu cầu tối ưu
+Chỉ select field cần thiết.
+Tránh load entity full nếu chỉ cần aggregate.
+Ưu tiên projection / DTO query / native query khi cần thiết.
+Có index phù hợp trên:
+`uptime_logs(monitor_id, checked_at)` hoặc tương đương
+`uptime_logs(status, checked_at)`
+`incidents(monitor_id, started_at, resolved_at)` nếu có
+`monitors(user_id, is_active)`
 ---
-12. Luồng xử lý chuẩn
-12.1. Incident phát sinh
-scheduler/worker check monitor
-evaluator phân tích kết quả
-create hoặc update `incident`
-invalidate Redis cache
-dispatcher load `alert_configs`
-tạo `alert_deliveries`
-gửi email/slack
-update trạng thái gửi
-12.2. Recovery
-monitor check thành công
-tìm incident active
-resolve incident
-invalidate Redis cache
-nếu có rule gửi recovery thì dispatch notification
-lưu log gửi
+7. Business rules chi tiết
+7.1. Currently Down
+Một monitor được coi là currently down nếu:
+trạng thái lần check gần nhất là `DOWN`, hoặc
+đang có incident open chưa resolve.
+Ưu tiên dùng rule nào đang thống nhất trong hệ thống. Không tạo định nghĩa mới nếu project đã có sẵn.
+7.2. Uptime
+```text
+uptime = successful_checks / total_checks * 100
+```
+Trong đó:
+successful checks: status `UP` / `HEALTHY`
+failed checks: status `DOWN` / `TIMEOUT` / `ERROR` tùy enum hiện tại
+7.3. Avg latency
+Chỉ tính trên các log có response time hợp lệ.
+Cần thống nhất có tính log failed hay không.
+Gợi ý: chỉ tính log có `response_time_ms != null`.
+7.4. Downtime duration
+Nếu có bảng incident:
+lấy tổng thời lượng incident trong khoảng thời gian.
+Nếu chưa có bảng incident:
+tạm suy ra từ uptime_logs theo số bucket/check failed liên tiếp.
+nhưng ưu tiên incident nếu đã tồn tại vì chính xác hơn.
 ---
-13. Validation & security
-Validation
-email đúng format
-slack webhook đúng format
-không cho destination rỗng
-không cho tạo config trùng vô nghĩa nếu muốn giới hạn
-Security
-chỉ truy cập monitor của chính user đó
-không log secret
-mask webhook khi trả ra response nếu cần
-không trả SMTP password ra bất kỳ API nào
-nếu Redis lỗi thì không làm fail toàn bộ request đọc
+8. Cấu trúc code mong muốn
+8.1. Controller
+Tạo `DashboardController` nếu chưa có.
+8.2. Service
+Tạo hoặc bổ sung:
+`DashboardService`
+`DashboardQueryService` nếu muốn tách read-only aggregate logic
+`DashboardCacheService`
+8.3. DTOs
+Tạo DTO riêng cho từng API, ví dụ:
+`DashboardSummaryResponse`
+`DashboardTrendResponse`
+`ResponseTimeChartResponse`
+`ResponseTimePointResponse`
+`ErrorRateItemResponse`
+`UptimeGaugeResponse`
+`UnstableMonitorItemResponse`
+`PlanUsageResponse`
+`DashboardSuggestionResponse`
+`DashboardOverviewResponse`
+8.4. Repository
+Chỉ tạo query mới nếu query cũ không đáp ứng được.
+Có thể bổ sung:
+`MonitorRepository` aggregate methods
+`UptimeLogRepository` aggregate methods
+`IncidentRepository` aggregate methods
+`SubscriptionRepository` / `SubscriptionPlanRepository`
 ---
-14. Logging & audit
-Cần log:
-incident được tạo
-incident được update
-incident được resolve
-email gửi thành công/thất bại
-slack gửi thành công/thất bại
-retry notification
-cache hit/miss cho summary và list phổ biến
-Không log:
-SMTP password
-full webhook URL
-credential nhạy cảm
+9. Definition of Done
+Hoàn thành task khi đạt đủ:
+9.1. Functional
+Dashboard load được toàn bộ block theo mockup.
+API trả đúng dữ liệu cho từng widget.
+Có xử lý trường hợp không có dữ liệu.
+Có logic skip nếu API đã tồn tại.
+9.2. Technical
+Có Redis cache cho các API dashboard.
+Có cơ chế clear cache phù hợp.
+Không duplicate logic nếu project đã có service tương tự.
+Query aggregate đủ tối ưu.
+Code tuân thủ structure hiện có của project.
+9.3. Testing
+Cần có test hoặc ít nhất kiểm tra thủ công cho các case:
+user chưa có monitor
+user có monitor nhưng chưa có logs
+user có nhiều monitor active/inactive
+có monitor đang down
+có incident open
+có subscription plan và không có subscription plan
+cache hit / cache miss / cache invalidate
 ---
-15. Ưu tiên implement
-Phase 1
-[x] entity + repository
-[x] create/list/update alert config
-[x] incident create/update/resolve
-[x] list alerts
-[x] summary alerts
-Phase 2
-[x] Brevo SMTP email sender
-[x] Slack webhook sender
-[x] alert delivery log
-[ ] Redis cache cho summary, list, detail
-[x] API test email/slack
-Phase 3
-[x] export CSV
-[x] acknowledge/resolve manual
-[ ] retry/backoff notification
-[x] tối ưu key invalidation
-[x] tối ưu query và warm cache nếu cần
+10. Checklist implement
+[ ] Rà soát API/dashboard/statistics hiện có, đánh dấu phần nào đã tồn tại
+[ ] Rà soát DTO/service/repository hiện có để tái sử dụng
+[ ] Tạo `DashboardController` nếu chưa có
+[ ] Code `GET /dashboard/summary` nếu chưa có
+[ ] Code `GET /dashboard/charts/response-time` nếu chưa có
+[ ] Code `GET /dashboard/error-rate` nếu chưa có
+[ ] Code `GET /dashboard/uptime-gauge` nếu chưa có
+[ ] Code `GET /dashboard/unstable-monitors` nếu chưa có
+[ ] Code `GET /dashboard/plan-usage` nếu chưa có
+[ ] Code `GET /dashboard/suggestions` nếu chưa có
+[ ] Cân nhắc code `GET /dashboard/overview` nếu FE muốn 1 request tổng
+[ ] Thêm Redis caching cho các API dashboard
+[ ] Thêm cơ chế invalidate dashboard cache theo `userId`
+[ ] Kiểm tra index/query performance
+[ ] Test dữ liệu thực tế với FE dashboard
 ---
-16. Endpoint checklist
-Alerts
-[x] GET `/api/v1/alerts/summary`
-[x] GET `/api/v1/alerts`
-[x] GET `/api/v1/alerts/{id}`
-[x] PATCH `/api/v1/alerts/{id}/acknowledge`
-[x] PATCH `/api/v1/alerts/{id}/resolve`
-[x] GET `/api/v1/alerts/export`
-Alert configs
-[x] GET `/api/v1/monitors/{monitorId}/alert-configs`
-[x] POST `/api/v1/monitors/{monitorId}/alert-configs`
-[x] PUT `/api/v1/monitors/{monitorId}/alert-configs/{id}`
-[x] PATCH `/api/v1/monitors/{monitorId}/alert-configs/{id}/toggle`
-[x] DELETE `/api/v1/monitors/{monitorId}/alert-configs/{id}`
-Test notification
-[x] POST `/api/v1/alerts/test/email`
-[x] POST `/api/v1/alerts/test/slack`
----
-17. Ghi chú triển khai Brevo SMTP
-dùng `spring-boot-starter-mail`
-map env vào `spring.mail.*`
-host dùng `smtp-relay.brevo.com`
-port dùng `587`
-auth = true
-starttls = true
-username/password lấy từ env
-
-18. Ghi chú triển khai Redis
-dùng `spring-boot-starter-data-redis`
-serialize cache DTO bằng JSON
-prefix key theo module `alerts:*`
-tránh cache entity JPA có lazy relation
-thêm timeout ngắn để dữ liệu không stale lâu
-nên bọc cache bằng service riêng để dễ đổi chiến lược invalidate
----
-19. Kết quả mong muốn
-Sau khi hoàn thành các task trên, backend phải:
-tạo incident từ monitor failure
-hiển thị đúng tab Alerts
-filter/search/paginate được
-gửi được email qua Brevo SMTP
-gửi được Slack Webhook
-lưu được lịch sử gửi notification
-export được alerts
-cache được summary/list/detail bằng Redis để giảm tải DB
+11. Ghi chú cho developer
+Không code trùng API đã tồn tại.
+Không tạo endpoint mới nếu endpoint cũ chỉ thiếu vài field có thể mở rộng được.
+Ưu tiên tái sử dụng logic hiện có từ monitoring, uptime logs, incidents, subscription.
+Nếu dữ liệu mockup khác với cấu trúc DB thực tế, ưu tiên bám vào dữ liệu thực tế của hệ thống.
+Nếu cần, có thể gộp một số widget về chung `overview` để giảm số request từ FE.

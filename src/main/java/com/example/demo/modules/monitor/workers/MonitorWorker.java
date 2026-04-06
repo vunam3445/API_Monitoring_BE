@@ -12,6 +12,7 @@ import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
 import com.example.demo.modules.alert.services.IIncidentService;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
+import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -49,6 +50,7 @@ public class MonitorWorker {
     private final UserSettingRepository userSettingRepository;
     private final com.example.demo.common.cache.ICacheService cacheService;
     private final IIncidentService incidentService;
+    private final DashboardCacheService dashboardCacheService;
 
     @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
     @Transactional
@@ -174,5 +176,6 @@ public class MonitorWorker {
         cacheService.evict("monitoring:key-health:" + monitor.getUserId());
         cacheService.evictByPrefix("monitoring:recent-events:" + monitor.getUserId());
         cacheService.evict("monitoring:overview:" + monitor.getId());
+        dashboardCacheService.clearUserDashboardCache(monitor.getUserId());
     }
 }
