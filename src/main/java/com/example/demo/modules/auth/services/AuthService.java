@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.dto.GoogleLoginRequest;
 import com.example.demo.modules.auth.dto.LoginRequest;
 import com.example.demo.modules.auth.dto.RegisterRequest;
 import com.example.demo.modules.auth.dto.LoginResponse;
+import com.example.demo.modules.auth.dto.ChangePasswordRequest;
 import com.example.demo.modules.subscription.entities.Subscription;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.entities.User;
@@ -187,6 +188,28 @@ public class AuthService {
         }
 
         return jwtService.generateToken(user);
+    }
+
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy thông tin người dùng"));
+
+        if (request.getOldPassword().equals(request.getNewPassword())) {
+            throw new IllegalArgumentException("Mật khẩu mới không được trùng với mật khẩu cũ");
+        }
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Mật khẩu cũ không chính xác");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        
+        // Clear refresh token to force re-login on next token refresh for safety
+        user.setRefreshToken(null);
+        user.setRefreshTokenExpiry(null);
+
+        userRepository.save(user);
     }
 
     private GoogleIdToken.Payload verifyGoogleToken(String idTokenString) {

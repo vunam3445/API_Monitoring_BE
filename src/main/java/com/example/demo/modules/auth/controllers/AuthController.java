@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.dto.RegisterRequest;
 import com.example.demo.modules.auth.dto.LoginResponse;
 import com.example.demo.modules.user.entities.User;
 import com.example.demo.modules.auth.services.AuthService;
+import com.example.demo.common.security.ISecurityContextService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -24,9 +25,11 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final ISecurityContextService securityContextService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ISecurityContextService securityContextService) {
         this.authService = authService;
+        this.securityContextService = securityContextService;
     }
 
     @PostMapping("/register")
@@ -95,5 +98,15 @@ public class AuthController {
 
         loginData.setRefreshToken(null);
         return ResponseEntity.ok(loginData);
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(@Valid @RequestBody com.example.demo.modules.auth.dto.ChangePasswordRequest request) {
+        java.util.UUID userId = securityContextService.getCurrentUserId()
+                .orElseThrow(() -> new RuntimeException("Bạn cần đăng nhập để thao tác."));
+
+        authService.changePassword(userId, request);
+
+        return ResponseEntity.ok(Map.of("message", "Đổi mật khẩu thành công. Vui lòng sử dụng mật khẩu mới cho những lần đăng nhập sau."));
     }
 }
