@@ -52,7 +52,12 @@ public class UptimeLogService implements IUptimeLogService {
                 entityPage.getNumber(),
                 entityPage.getSize(),
                 entityPage.getTotalElements(),
-                null, false, 0, null, false, 0
+                null, 
+                entityPage.isLast(), 
+                entityPage.getTotalPages(), 
+                null, 
+                entityPage.isFirst(), 
+                entityPage.getNumberOfElements()
         );
     }
 
@@ -71,7 +76,12 @@ public class UptimeLogService implements IUptimeLogService {
                 entityPage.getNumber(),
                 entityPage.getSize(),
                 entityPage.getTotalElements(),
-                null, false, 0, null, false, 0
+                null, 
+                entityPage.isLast(), 
+                entityPage.getTotalPages(), 
+                null, 
+                entityPage.isFirst(), 
+                entityPage.getNumberOfElements()
         );
     }
 
@@ -109,7 +119,12 @@ public class UptimeLogService implements IUptimeLogService {
                 entityPage.getNumber(),
                 entityPage.getSize(),
                 entityPage.getTotalElements(),
-                null, false, 0, null, false, 0
+                null, 
+                entityPage.isLast(), 
+                entityPage.getTotalPages(), 
+                null, 
+                entityPage.isFirst(), 
+                entityPage.getNumberOfElements()
         );
     }
 }
