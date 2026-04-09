@@ -2,6 +2,7 @@ package com.example.demo.modules.user.controllers;
 
 import com.example.demo.modules.user.dto.UserAdminResponse;
 import com.example.demo.modules.user.dto.UserFilterCriteria;
+import com.example.demo.modules.user.dto.UserStatisticsResponse;
 import com.example.demo.modules.user.services.IManagerUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -35,8 +36,23 @@ public class ManagerUserController {
      * Khóa người dùng
      */
     @PatchMapping("/{userId}/block")
-    public ResponseEntity<Void> blockUser(@PathVariable UUID userId) {
-        managerUserService.blockUser(userId);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<UserAdminResponse> blockUser(@PathVariable UUID userId) {
+        return ResponseEntity.ok(managerUserService.blockUser(userId));
+    }
+
+    /**
+     * Kích hoạt người dùng
+     */
+    @PatchMapping("/{userId}/active")
+    public ResponseEntity<UserAdminResponse> activeUser(@PathVariable UUID userId) {
+        return ResponseEntity.ok(managerUserService.activeUser(userId));
+    }
+
+    /**
+     * Lấy thống kê tổng hợp người dùng và các gói Plan (Dành cho Dashboard Admin)
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<UserStatisticsResponse> getUserStatistics() {
+        return ResponseEntity.ok(managerUserService.countUserAndPlanUser());
     }
 }

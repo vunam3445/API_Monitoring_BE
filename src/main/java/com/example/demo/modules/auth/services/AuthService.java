@@ -23,6 +23,7 @@ import com.example.demo.modules.subscription.repositories.SubscriptionPlanReposi
 import com.example.demo.modules.user.enums.UserStatus;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
+import com.example.demo.common.cache.ICacheService;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -47,17 +48,19 @@ public class AuthService {
     private final JwtService jwtService;
     private final UserSettingRepository userSettingRepository;
     private final SubscriptionService subscriptionService;
+    private final ICacheService cacheService;
 
     @Value("${google.client-id}")
     private String googleClientId;
 
     public AuthService(UserRepository userRepository,
-                       SubscriptionPlanRepository planRepository,
-                       SubscriptionRepository subscriptionRepository,
-                       BCryptPasswordEncoder passwordEncoder,
-                       UserSettingRepository userSettingRepository,
-                       SubscriptionService subscriptionService,
-                       JwtService jwtService) {
+            SubscriptionPlanRepository planRepository,
+            SubscriptionRepository subscriptionRepository,
+            BCryptPasswordEncoder passwordEncoder,
+            UserSettingRepository userSettingRepository,
+            SubscriptionService subscriptionService,
+            ICacheService cacheService,
+            JwtService jwtService) {
         this.userRepository = userRepository;
         this.planRepository = planRepository;
         this.subscriptionRepository = subscriptionRepository;
@@ -65,7 +68,9 @@ public class AuthService {
         this.jwtService = jwtService;
         this.userSettingRepository = userSettingRepository;
         this.subscriptionService = subscriptionService;
+        this.cacheService = cacheService;
     }
+
     @Transactional
     public User register(RegisterRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
@@ -88,6 +93,10 @@ public class AuthService {
         createUserDefaultSettings(user);
         User savedUser = userRepository.save(user);
         createDefaultFreeSubscription(savedUser);
+
+        // Xóa cache danh sách để Admin thấy người dùng mới
+        evictUserCaches(null);
+
         return savedUser;
     }
 
@@ -138,14 +147,17 @@ public class AuthService {
             createUserDefaultSettings(user);
             User savedUser = userRepository.save(user);
             createDefaultFreeSubscription(savedUser);
+            evictUserCaches(null); // Xóa list cache
             return generateLoginResponse(savedUser);
         }
         User updatedUser = userRepository.save(user);
+        evictUserCaches(updatedUser.getId()); // Xóa cả list và object cache
         return generateLoginResponse(updatedUser);
     }
 
     /**
-     * Logic dùng chung để tạo Token, cập nhật thời gian đăng nhập và trả về Response
+     * Logic dùng chung để tạo Token, cập nhật thời gian đăng nhập và trả về
+     * Response
      */
     private LoginResponse generateLoginResponse(User user) {
         String accessToken = jwtService.generateToken(user);
@@ -182,7 +194,8 @@ public class AuthService {
             throw new ExpiredRefreshTokenException("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại");
         }
 
-        // Vẫn check status khi refresh token để đảm bảo nếu vừa bị khóa thì ko dùng tiếp được
+        // Vẫn check status khi refresh token để đảm bảo nếu vừa bị khóa thì ko dùng
+        // tiếp được
         if (user.getStatus() == UserStatus.SUSPENDED) {
             throw new AccountSuspendedException("Tài khoản đã bị khóa.");
         }
@@ -204,17 +217,19 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        
+
         // Clear refresh token to force re-login on next token refresh for safety
         user.setRefreshToken(null);
         user.setRefreshTokenExpiry(null);
 
         userRepository.save(user);
+        evictUserCaches(userId);
     }
 
     private GoogleIdToken.Payload verifyGoogleToken(String idTokenString) {
         try {
-            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
+            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(),
+                    new GsonFactory())
                     .setAudience(Collections.singletonList(googleClientId))
                     .build();
 
@@ -249,5 +264,18 @@ public class AuthService {
         settings.setRetryAttempts(2);
 
         // Không gọi userSettingRepository.save(settings);
+    }
+
+    private void evictUserCaches(UUID userId) {
+        // 1. Xóa cache danh sách Admin
+        cacheService.evictByPrefix("api-monitoring:admin:users:list::");
+
+        // 2. Xóa cache danh sách User chung
+        cacheService.evictByPrefix("api-monitoring:api:list::user");
+
+        // 3. Xóa cache object cá nhân (nếu có userId)
+        if (userId != null) {
+            cacheService.evict("api-monitoring:api:object::user:" + userId);
+        }
     }
 }

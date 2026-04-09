@@ -1,9 +1,14 @@
 package com.example.demo.modules.user.services;
 
 import com.example.demo.common.base.RestPageImpl;
+import com.example.demo.common.exceptions.ForbidenException;
+import com.example.demo.common.exceptions.UserNotFoundException;
 import com.example.demo.modules.user.dto.UserAdminResponse;
 import com.example.demo.modules.user.dto.UserFilterCriteria;
+import com.example.demo.modules.user.dto.UserStatisticsResponse;
 import com.example.demo.modules.user.entities.User;
+import com.example.demo.modules.user.enums.UserStatus;
+import com.example.demo.modules.user.enums.UserRole;
 import com.example.demo.modules.user.mappers.UserMapper;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.user.repositories.UserSpecification;
@@ -11,24 +16,39 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import com.example.demo.common.security.ISecurityContextService;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.example.demo.common.cache.ICacheService;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import com.example.demo.modules.user.dto.PlanUserStatisticItem;
 
 @Service
 @RequiredArgsConstructor
-public class ManagerUserService implements IManagerUserService{
+@Transactional
+public class ManagerUserService implements IManagerUserService {
     private final UserRepository userRepository;
     private final UserMapper mapper;
+    private final ISecurityContextService securityContextService;
+    private final ICacheService cacheService;
+
+    private static final String CACHE_ADMIN_USERS = "api-monitoring:admin:users:list";
+    private static final String CACHE_STATS = "api-monitoring:admin:users:stats";
 
     @Override
+    @Cacheable(value = CACHE_ADMIN_USERS, key = "'filters_' + #userFilterCriteria.toString().hashCode() + " +
+            "'_page_' + #pageable.pageNumber + '_size_' + #pageable.pageSize + " +
+            "'_sort_' + #pageable.sort.toString()", unless = "#result == null")
     public Page<UserAdminResponse> getAllUser(UserFilterCriteria userFilterCriteria, Pageable pageable) {
         Specification<User> spec = Specification.where(UserSpecification.hasEmail(userFilterCriteria.getEmail())
-                                                .and(UserSpecification.hasFullName(userFilterCriteria.getFullName()))
-                                                .and(UserSpecification.hasRole(userFilterCriteria.getRole()))
-                                                .and(UserSpecification.hasPlanType(userFilterCriteria.getPlanType()))
-                                                .and(UserSpecification.hasStatus(userFilterCriteria.getStatus())));
+                .and(UserSpecification.hasFullName(userFilterCriteria.getFullName()))
+                .and(UserSpecification.hasRole(userFilterCriteria.getRole()))
+                .and(UserSpecification.hasPlanType(userFilterCriteria.getPlanType()))
+                .and(UserSpecification.hasStatus(userFilterCriteria.getStatus())));
         Page<User> users = userRepository.findAll(spec, pageable);
         List<UserAdminResponse> dtos = mapper.toUserAdminResponseList(users.getContent());
         return new RestPageImpl<>(
@@ -36,17 +56,101 @@ public class ManagerUserService implements IManagerUserService{
                 users.getNumber(),
                 users.getSize(),
                 users.getTotalElements(),
-                null, 
+                null,
                 users.isLast(),
                 users.getTotalPages(),
                 null,
                 users.isFirst(),
-                users.getNumberOfElements()
-        );
+                users.getNumberOfElements());
     }
 
     @Override
-    public void blockUser(UUID userId) {
-        // Method placeholder
+    public UserAdminResponse blockUser(UUID userId) {
+        validateNotSelf(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("Không tìm thấy user"));
+        user.setStatus(UserStatus.SUSPENDED);
+        userRepository.saveAndFlush(user);
+
+        // Xóa cache danh sách admin và danh sách người dùng chung
+        evictUserCaches(userId);
+
+        return mapper.toUserAdminResponse(user);
+    }
+
+    @Override
+    public UserAdminResponse activeUser(UUID userId) {
+        validateNotSelf(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("Không tìm thấy user"));
+        user.setStatus(UserStatus.ACTIVE);
+        userRepository.saveAndFlush(user);
+
+        // Xóa cache danh sách admin và danh sách người dùng chung
+        evictUserCaches(userId);
+
+        return mapper.toUserAdminResponse(user);
+    }
+
+    private void evictUserCaches(UUID userId) {
+        // 1. Xóa cache danh sách admin (đa tiêu chí lọc)
+        cacheService.evictByPrefix(CACHE_ADMIN_USERS + "::");
+
+        // 2. Xóa cache danh sách người dùng chung (từ BaseService của UserService)
+        cacheService.evictByPrefix("api-monitoring:api:list::user");
+
+        // 3. Xóa cache object cá nhân của user (nếu có)
+        if (userId != null) {
+            cacheService.evict("api-monitoring:api:object::user:" + userId);
+        }
+        
+        // 4. Xóa cache thống kê
+        cacheService.evictByPrefix(CACHE_STATS);
+    }
+
+    private void validateNotSelf(UUID targetUserId) {
+        securityContextService.getCurrentUserId().ifPresent(currentUserId -> {
+            if (currentUserId.equals(targetUserId)) {
+                throw new ForbidenException("Bạn không thể thực hiện thao tác này trên chính tài khoản của mình");
+            }
+        });
+    }
+
+    @Override
+    @Cacheable(value = CACHE_STATS, key = "'all'", unless = "#result == null")
+    public UserStatisticsResponse countUserAndPlanUser() {
+        UserStatisticsResponse response = new UserStatisticsResponse();
+
+        // Query 1: Thống kê theo trạng thái (Loại trừ ADMIN và Plan rỗng)
+        List<Object[]> statusCounts = userRepository.countUsersByStatus(UserRole.ADMIN);
+        int total = 0;
+        int active = 0;
+        int blocked = 0;
+
+        for (Object[] row : statusCounts) {
+            UserStatus status = (UserStatus) row[0];
+            int count = ((Long) row[1]).intValue();
+            total += count;
+            if (status == UserStatus.ACTIVE) active = count;
+            if (status == UserStatus.SUSPENDED) blocked = count;
+        }
+
+        response.setTotalUser(total);
+        response.setTotalActiveUser(active);
+        response.setTotalBlockUser(blocked);
+
+        // Query 2: Thống kê theo Plan (Loại trừ ADMIN và Plan rỗng)
+        List<Object[]> planCounts = userRepository.countUsersByPlan(UserRole.ADMIN);
+        List<PlanUserStatisticItem> planStatistics = planCounts.stream()
+                .map(row -> {
+                    PlanUserStatisticItem item = new PlanUserStatisticItem();
+                    item.setPlanName((String) row[0]);
+                    item.setTotalUser(((Long) row[1]).intValue());
+                    return item;
+                })
+                .collect(Collectors.toList());
+
+        response.setPlanStatistics(planStatistics);
+        return response;
     }
 }
