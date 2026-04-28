@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
-public class AlertDeliveryService {
+public class AlertDeliveryService implements IAlertDeliveryService {
 
     private final AlertDeliveryRepository deliveryRepository;
 
@@ -43,4 +43,6 @@ public class AlertDeliveryService {
         delivery.setRetryCount(delivery.getRetryCount() + 1);
         deliveryRepository.save(delivery);
     }
+
+    
 }

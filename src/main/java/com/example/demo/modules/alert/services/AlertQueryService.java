@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class AlertQueryService {
+public class AlertQueryService implements IAlertQueryService {
 
     public byte[] exportCsv(UUID userId, IncidentStatus status, IncidentSeverity severity, IncidentType type, LocalDateTime from, LocalDateTime to) {
         Specification<Incident> spec = Specification.where((root, query, cb) -> cb.equal(root.get("monitor").get("userId"), userId));

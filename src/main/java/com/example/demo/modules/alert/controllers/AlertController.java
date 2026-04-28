@@ -1,13 +1,15 @@
 package com.example.demo.modules.alert.controllers;
 
 import com.example.demo.common.security.ISecurityContextService;
+import com.example.demo.modules.alert.dto.AdminUserMonitorAlertResponse;
 import com.example.demo.modules.alert.dto.AlertListResponse;
 import com.example.demo.modules.alert.dto.AlertSummaryResponse;
 import com.example.demo.modules.alert.enums.IncidentSeverity;
 import com.example.demo.modules.alert.enums.IncidentStatus;
 import com.example.demo.modules.alert.enums.IncidentType;
-import com.example.demo.modules.alert.services.AlertQueryService;
-import com.example.demo.modules.alert.services.AlertSummaryService;
+import com.example.demo.modules.alert.services.IAlertQueryService;
+import com.example.demo.modules.alert.services.IAlertSummaryService;
+import com.example.demo.modules.alert.services.IIncidentService;
 import com.example.demo.modules.user.entities.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -24,9 +26,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AlertController {
 
-    private final AlertQueryService alertQueryService;
-    private final AlertSummaryService alertSummaryService;
-    private final com.example.demo.modules.alert.services.IIncidentService incidentService;
+    private final IAlertQueryService alertQueryService;
+    private final IAlertSummaryService alertSummaryService;
+    private final IIncidentService incidentService;
     private final ISecurityContextService securityContextService;
 
     @GetMapping("/summary")
@@ -97,5 +99,10 @@ public class AlertController {
         return securityContextService.getCurrentUser()
                 .map(User::getId)
                 .orElseThrow(() -> new RuntimeException("User not authenticated"));
+    }
+
+    @GetMapping("/users/{userId}/monthly-stats")
+    public ResponseEntity<AdminUserMonitorAlertResponse> countAlertsAndIncidentsInMonth(@PathVariable UUID userId) {
+        return ResponseEntity.ok(alertSummaryService.countAlertsAndIncidentsInMonth(userId));
     }
 }

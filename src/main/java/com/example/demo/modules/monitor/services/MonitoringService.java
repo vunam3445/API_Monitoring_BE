@@ -1,10 +1,12 @@
 package com.example.demo.modules.monitor.services;
 
 import com.example.demo.common.cache.ICacheService;
+import com.example.demo.common.exceptions.UserNotFoundException;
 import com.example.demo.modules.monitor.dto.MonitoringSummaryResponse;
 import com.example.demo.modules.monitor.enums.MonitorStatus;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
+import com.example.demo.modules.user.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +41,7 @@ public class MonitoringService implements IMonitoringService {
     private final UptimeLogsRepository uptimeLogsRepository;
     private final ICacheService cacheService;
     private final MonitorMapper monitorMapper;
+    private final UserRepository userRepository;
 
     private static final String CACHE_PREFIX = "monitoring:summary:";
     private static final long CACHE_TTL = 60; // 60 seconds
@@ -46,23 +49,24 @@ public class MonitoringService implements IMonitoringService {
     @Override
     public MonitorOverviewResponse getMonitorOverview(UUID userId, UUID monitorId) {
         String cacheKey = "monitoring:overview:" + monitorId;
-        
+
         Object cached = cacheService.get(cacheKey);
-        if (cached instanceof MonitorOverviewResponse) return (MonitorOverviewResponse) cached;
+        if (cached instanceof MonitorOverviewResponse)
+            return (MonitorOverviewResponse) cached;
 
         Monitor monitor = monitorRepository.findById(monitorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Monitor not found: " + monitorId));
-                
+
         if (!monitor.getUserId().equals(userId)) {
             throw new ForbidenException("Bạn không có quyền truy cập dữ liệu này.");
         }
 
         // Fetch recent logs (10)
         List<MonitoringEventResponse> recentLogs = getRecentEventsForMonitor(monitor, 10);
-        
+
         // Fetch chart data (24h)
         List<MonitoringChartPoint> chartData = getCharts(userId, monitorId, "24h");
-        
+
         // Calculate uptime percentage (30d)
         LocalDateTime since30d = LocalDateTime.now().minusDays(30);
         long total30 = uptimeLogsRepository.countByMonitorIdAndSince(monitorId, since30d);
@@ -84,11 +88,12 @@ public class MonitoringService implements IMonitoringService {
     }
 
     private List<MonitoringEventResponse> getRecentEventsForMonitor(Monitor monitor, int limit) {
-        Page<UptimeLogs> logs = uptimeLogsRepository.findByMonitorIdOrderByCheckedAtDesc(monitor.getId(), PageRequest.of(0, limit));
+        Page<UptimeLogs> logs = uptimeLogsRepository.findByMonitorIdOrderByCheckedAtDesc(monitor.getId(),
+                PageRequest.of(0, limit));
         return logs.getContent().stream().map(l -> {
-            MonitorStatus status = l.getIsUp() ? 
-                ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY) : 
-                MonitorStatus.DOWN;
+            MonitorStatus status = l.getIsUp()
+                    ? ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY)
+                    : MonitorStatus.DOWN;
             return MonitoringEventResponse.builder()
                     .time(l.getCheckedAt())
                     .apiName(monitor.getName())
@@ -107,7 +112,7 @@ public class MonitoringService implements IMonitoringService {
         List<Integer> points = charts.stream()
                 .map(p -> p.getAvgResponseTimeMs().intValue())
                 .collect(Collectors.toList());
-                
+
         return MonitorTrendResponse.builder()
                 .monitorId(monitorId)
                 .range(range)
@@ -118,17 +123,19 @@ public class MonitoringService implements IMonitoringService {
     @Override
     public List<MonitoringEventResponse> getRecentEvents(UUID userId, int limit) {
         String cacheKey = "monitoring:recent-events:" + userId + ":" + limit;
-        
-        Object cached = cacheService.get(cacheKey);
-        if (cached instanceof List) return (List<MonitoringEventResponse>) cached;
 
-        Page<UptimeLogs> logs = uptimeLogsRepository.findByMonitorUserIdOrderByCheckedAtDesc(userId, PageRequest.of(0, limit));
-        
+        Object cached = cacheService.get(cacheKey);
+        if (cached instanceof List)
+            return (List<MonitoringEventResponse>) cached;
+
+        Page<UptimeLogs> logs = uptimeLogsRepository.findByMonitorUserIdOrderByCheckedAtDesc(userId,
+                PageRequest.of(0, limit));
+
         List<MonitoringEventResponse> events = logs.getContent().stream().map(l -> {
-            MonitorStatus status = l.getIsUp() ? 
-                    ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY) : 
-                    MonitorStatus.DOWN;
-                    
+            MonitorStatus status = l.getIsUp()
+                    ? ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY)
+                    : MonitorStatus.DOWN;
+
             return MonitoringEventResponse.builder()
                     .time(l.getCheckedAt())
                     .apiName(l.getMonitor().getName())
@@ -144,18 +151,19 @@ public class MonitoringService implements IMonitoringService {
     }
 
     @Override
-    public Page<MonitorLogRow> getMonitorLogs(UUID userId, UUID monitorId, MonitorStatus status, MonitorEventType eventType, Pageable pageable) {
+    public Page<MonitorLogRow> getMonitorLogs(UUID userId, UUID monitorId, MonitorStatus status,
+            MonitorEventType eventType, Pageable pageable) {
         Specification<UptimeLogs> spec = Specification.where(UptimeLogsSpecification.hasUserId(userId))
                 .and(UptimeLogsSpecification.hasMonitorId(monitorId))
                 .and(UptimeLogsSpecification.hasStatus(status))
                 .and(UptimeLogsSpecification.hasEventType(eventType));
 
         Page<UptimeLogs> entityPage = uptimeLogsRepository.findAll(spec, pageable);
-        
+
         List<MonitorLogRow> dtos = entityPage.getContent().stream().map(l -> {
-            MonitorStatus logStatus = l.getIsUp() ? 
-                    ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY) : 
-                    MonitorStatus.DOWN;
+            MonitorStatus logStatus = l.getIsUp()
+                    ? ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY)
+                    : MonitorStatus.DOWN;
 
             return MonitorLogRow.builder()
                     .logId(l.getId())
@@ -171,13 +179,14 @@ public class MonitoringService implements IMonitoringService {
                     .build();
         }).collect(Collectors.toList());
 
-        return new RestPageImpl<>(dtos, entityPage.getNumber(), entityPage.getSize(), entityPage.getTotalElements(), null, false, 0, null, false, 0);
+        return new RestPageImpl<>(dtos, entityPage.getNumber(), entityPage.getSize(), entityPage.getTotalElements(),
+                null, false, 0, null, false, 0);
     }
 
     @Override
     public List<KeyHealthResponse> getKeyHealth(UUID userId) {
         String cacheKey = "monitoring:key-health:" + userId;
-        
+
         // 1. Check cache
         Object cached = cacheService.get(cacheKey);
         if (cached instanceof List) {
@@ -186,18 +195,19 @@ public class MonitoringService implements IMonitoringService {
 
         // 2. Fetch monitors
         List<Monitor> monitors = monitorRepository.findAllByUserId(userId);
-        if (monitors.isEmpty()) return Collections.emptyList();
+        if (monitors.isEmpty())
+            return Collections.emptyList();
 
         // 3. Tính uptime cho từng monitor (24h)
         LocalDateTime since = LocalDateTime.now().minusHours(24);
-        
+
         // Mocking uptime and trend data for now to focus on structure
         // In real production, we'd use aggregation query
         List<KeyHealthResponse> responses = monitors.stream().map(m -> {
-            
+
             // Lấy 20 điểm latency gần nhất cho mini trend
             List<Integer> trend = uptimeLogsRepository.findRecentLatency(m.getId(), 20);
-            
+
             // Tính uptime
             long total = uptimeLogsRepository.countByMonitorIdAndSince(m.getId(), since);
             long up = uptimeLogsRepository.countByMonitorIdAndIsUpAndSince(m.getId(), true, since);
@@ -223,7 +233,7 @@ public class MonitoringService implements IMonitoringService {
     @Override
     public MonitoringSummaryResponse getSummary(UUID userId) {
         String cacheKey = CACHE_PREFIX + userId.toString();
-        
+
         // 1. Check cache
         Object cached = cacheService.get(cacheKey);
         if (cached instanceof MonitoringSummaryResponse) {
@@ -239,14 +249,14 @@ public class MonitoringService implements IMonitoringService {
         long warningCount = monitorRepository.countByUserIdAndLastStatus(userId, MonitorStatus.WARNING);
         long downCount = monitorRepository.countByUserIdAndLastStatus(userId, MonitorStatus.DOWN);
         long pausedCount = monitorRepository.countByUserIdAndIsActive(userId, false);
-        
+
         long upCount = healthyCount + warningCount;
 
         // Tính uptime tổng quan trong 24h qua
         LocalDateTime since = LocalDateTime.now().minusHours(24);
         long totalLogs = uptimeLogsRepository.countTotalByUser(userId, since);
         long upLogs = uptimeLogsRepository.countUpByUser(userId, since);
-        
+
         double uptimePercentOverall = (totalLogs > 0) ? (double) upLogs * 100 / totalLogs : 100.0;
 
         MonitoringSummaryResponse summary = MonitoringSummaryResponse.builder()
@@ -261,14 +271,14 @@ public class MonitoringService implements IMonitoringService {
 
         // 3. Cache result
         cacheService.set(cacheKey, summary, CACHE_TTL);
- 
+
         return summary;
     }
- 
+
     @Override
     public List<MonitoringChartPoint> getCharts(UUID userId, UUID monitorId, String range) {
         String cacheKey = "monitoring:chart:" + userId + ":" + (monitorId != null ? monitorId : "all") + ":" + range;
-        
+
         // 1. Check cache
         Object cached = cacheService.get(cacheKey);
         if (cached instanceof List) {
@@ -302,18 +312,19 @@ public class MonitoringService implements IMonitoringService {
         }
 
         // 3. Query DB
-        List<com.example.demo.modules.monitor.dto.MonitoringChartProjection> projections = 
-            uptimeLogsRepository.getAggregatedUptimeLogs(userId, monitorId, since, bucket);
+        List<com.example.demo.modules.monitor.dto.MonitoringChartProjection> projections = uptimeLogsRepository
+                .getAggregatedUptimeLogs(userId, monitorId, since, bucket);
 
         // 4. Map to DTO
         List<MonitoringChartPoint> points = projections.stream().map(p -> {
-            double errorRate = (p.getTotalChecks() != null && p.getTotalChecks() > 0) 
-                    ? (double) p.getFailedChecks() * 100 / p.getTotalChecks() 
+            double errorRate = (p.getTotalChecks() != null && p.getTotalChecks() > 0)
+                    ? (double) p.getFailedChecks() * 100 / p.getTotalChecks()
                     : 0.0;
-            
+
             return MonitoringChartPoint.builder()
                     .time(p.getTime())
-                    .avgResponseTimeMs(p.getAvgResponseTimeMs() != null ? Math.round(p.getAvgResponseTimeMs() * 10.0) / 10.0 : 0.0)
+                    .avgResponseTimeMs(
+                            p.getAvgResponseTimeMs() != null ? Math.round(p.getAvgResponseTimeMs() * 10.0) / 10.0 : 0.0)
                     .totalChecks(p.getTotalChecks())
                     .failedChecks(p.getFailedChecks())
                     .errorRatePercent(Math.round(errorRate * 100.0) / 100.0)
@@ -322,10 +333,10 @@ public class MonitoringService implements IMonitoringService {
 
         // 5. Cache result
         cacheService.set(cacheKey, points, CACHE_TTL);
- 
+
         return points;
     }
- 
+
     @Override
     public MonitorUptimeResponse getMonitorUptimeStats(UUID userId, UUID monitorId, String range) {
         LocalDateTime since;
@@ -355,9 +366,9 @@ public class MonitoringService implements IMonitoringService {
         }
 
         // Fetch aggregated status buckets
-        List<com.example.demo.modules.monitor.dto.UptimeStatusProjection> buckets = 
-            uptimeLogsRepository.getUptimeStatusBuckets(monitorId, since, bucketSeconds);
-        
+        List<com.example.demo.modules.monitor.dto.UptimeStatusProjection> buckets = uptimeLogsRepository
+                .getUptimeStatusBuckets(monitorId, since, bucketSeconds);
+
         List<MonitorUptimeResponse.UptimeStatusPoint> history = buckets.stream()
                 .map(b -> MonitorUptimeResponse.UptimeStatusPoint.builder()
                         .time(b.getTime())
@@ -365,7 +376,7 @@ public class MonitoringService implements IMonitoringService {
                         .latencyMs(b.getLatencyMs())
                         .build())
                 .collect(Collectors.toList());
-        
+
         // Calculate total uptime% (based on selected range)
         long total = uptimeLogsRepository.countByMonitorIdAndSince(monitorId, since);
         long up = uptimeLogsRepository.countByMonitorIdAndIsUpAndSince(monitorId, true, since);
@@ -378,7 +389,7 @@ public class MonitoringService implements IMonitoringService {
                 .statusHistory(history)
                 .build();
     }
- 
+
     @Override
     public MonitoringSearchResponse search(UUID userId, String keyword) {
         if (keyword == null || keyword.isBlank()) {
@@ -389,30 +400,30 @@ public class MonitoringService implements IMonitoringService {
         }
 
         // 1. Search monitors (name, URL)
-        Specification<Monitor> monitorSpec = Specification.where((root, query, cb) -> cb.equal(root.get("userId"), userId));
+        Specification<Monitor> monitorSpec = Specification
+                .where((root, query, cb) -> cb.equal(root.get("userId"), userId));
         monitorSpec = monitorSpec.and((root, query, cb) -> cb.or(
-            cb.like(cb.lower(root.get("name")), "%" + keyword.toLowerCase() + "%"),
-            cb.like(cb.lower(root.get("url")), "%" + keyword.toLowerCase() + "%")
-        ));
-        
+                cb.like(cb.lower(root.get("name")), "%" + keyword.toLowerCase() + "%"),
+                cb.like(cb.lower(root.get("url")), "%" + keyword.toLowerCase() + "%")));
+
         List<Monitor> monitors = monitorRepository.findAll(monitorSpec, PageRequest.of(0, 10)).getContent();
 
         // 2. Search logs (assertion message, error message, monitor name)
         Specification<UptimeLogs> logSpec = Specification.where(UptimeLogsSpecification.hasUserId(userId))
-            .and((root, query, cb) -> cb.or(
-                cb.like(cb.lower(root.get("assertionMessage")), "%" + keyword.toLowerCase() + "%"),
-                cb.like(cb.lower(root.get("errorMessage")), "%" + keyword.toLowerCase() + "%"),
-                cb.like(cb.lower(root.join("monitor").get("name")), "%" + keyword.toLowerCase() + "%")
-            ));
-            
-        List<UptimeLogs> logs = uptimeLogsRepository.findAll(logSpec, PageRequest.of(0, 10, Sort.by("checkedAt").descending())).getContent();
+                .and((root, query, cb) -> cb.or(
+                        cb.like(cb.lower(root.get("assertionMessage")), "%" + keyword.toLowerCase() + "%"),
+                        cb.like(cb.lower(root.get("errorMessage")), "%" + keyword.toLowerCase() + "%"),
+                        cb.like(cb.lower(root.join("monitor").get("name")), "%" + keyword.toLowerCase() + "%")));
+
+        List<UptimeLogs> logs = uptimeLogsRepository
+                .findAll(logSpec, PageRequest.of(0, 10, Sort.by("checkedAt").descending())).getContent();
 
         return MonitoringSearchResponse.builder()
                 .monitors(monitors.stream().map(monitorMapper::toResponse).collect(Collectors.toList()))
                 .recentLogs(logs.stream().map(l -> {
-                    MonitorStatus logStatus = l.getIsUp() ? 
-                            ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY) : 
-                            MonitorStatus.DOWN;
+                    MonitorStatus logStatus = l.getIsUp()
+                            ? ("WARNING".equals(l.getAssertionStatus()) ? MonitorStatus.WARNING : MonitorStatus.HEALTHY)
+                            : MonitorStatus.DOWN;
 
                     return MonitorLogRow.builder()
                             .logId(l.getId())
@@ -429,5 +440,14 @@ public class MonitoringService implements IMonitoringService {
                 }).collect(Collectors.toList()))
                 .build();
     }
-}
 
+    @Override
+    public AdminUserMonitorStatsDto getMonitorStats(UUID userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException("Không tìm thấy user!");
+        }
+        Object[] result = monitorRepository.countMonitorStats(userId);
+        log.info("Monitor stats: {}", result);
+        return monitorMapper.mapObjectToStats(result);
+    }
+}
