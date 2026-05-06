@@ -97,4 +97,10 @@ public class PaymentLogs {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Ghi chú chi tiết cho giao dịch
+     **/
+    @Column(name = "notes", length = 500)
+    private String notes;
 }

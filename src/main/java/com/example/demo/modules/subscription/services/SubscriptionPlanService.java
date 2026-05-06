@@ -102,6 +102,22 @@ public class SubscriptionPlanService
         );
     }
 
+    @Override
+    @Cacheable(value = "api-monitoring:subscription-plans-all", unless = "#result == null")
+    public List<PlanResponse> findAllPlans() {
+        UUID currentPlanId = getCurrentUserPlanId();
+        return repository.findAll().stream().map(plan -> {
+            PlanResponse res = mapper.toResponse(plan);
+            if (currentPlanId != null) {
+                res.setIsCurrentPlan(plan.getId().equals(currentPlanId));
+            } else {
+                res.setIsCurrentPlan(false);
+            }
+            return res;
+        }).collect(Collectors.toList());
+    }
+
+
     private UUID getCurrentUserPlanId() {
         return securityContextService.getCurrentUser()
                 .map(user -> user.getSubscriptionPlan() != null ? user.getSubscriptionPlan().getId() : null)

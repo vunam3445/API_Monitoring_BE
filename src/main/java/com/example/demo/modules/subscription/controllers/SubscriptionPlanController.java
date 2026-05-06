@@ -46,4 +46,9 @@ public class SubscriptionPlanController
         return ResponseEntity.ok(((ISubscriptionPlanService)service).findAllWithUserStatus(userId));
     }
    
+    @GetMapping
+    @IsAuthenticated
+    public ResponseEntity<java.util.List<PlanResponse>> getAllUnpaged() {
+        return ResponseEntity.ok(((ISubscriptionPlanService)service).findAllPlans());
+    }
 }

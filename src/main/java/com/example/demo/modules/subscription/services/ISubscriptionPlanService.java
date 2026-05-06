@@ -17,4 +17,6 @@ public interface ISubscriptionPlanService
 
     // Có thể thêm các phương thức đặc thù cho SubscriptionPlan tại đây
     java.util.List<PlanResponse> findAllWithUserStatus(UUID userId);
+
+    java.util.List<PlanResponse> findAllPlans();
 }

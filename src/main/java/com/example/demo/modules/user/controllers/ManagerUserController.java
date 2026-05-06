@@ -55,4 +55,14 @@ public class ManagerUserController {
     public ResponseEntity<UserStatisticsResponse> getUserStatistics() {
         return ResponseEntity.ok(managerUserService.countUserAndPlanUser());
     }
+
+    @PutMapping("/{userId}/subscription-plan/{planId}")
+    public ResponseEntity<java.util.Map<String, Object>> updatePlanForUserByAdmin(@PathVariable UUID userId, @PathVariable UUID planId) {
+        managerUserService.updatePlanForUser(userId, planId);
+        return ResponseEntity.ok(java.util.Map.of(
+                "success", true,
+                "message", "Cập nhật gói đăng ký thành công"
+        ));
+    }
+
 }

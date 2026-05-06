@@ -8,6 +8,7 @@ import com.example.demo.modules.monitor.enums.MonitorStatus;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.subscription.entities.Subscription;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
+import com.example.demo.modules.subscription.enums.SubscriptionStatus;
 import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
@@ -253,7 +254,7 @@ public class DashboardService implements IDashboardService {
         Object cached = cacheService.get(key);
         if (cached instanceof PlanUsageResponse) return (PlanUsageResponse) cached;
 
-        Subscription sub = subscriptionRepository.findByUserId(userId).orElse(null);
+        Subscription sub = subscriptionRepository.findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE).orElse(null);
         SubscriptionPlan plan = null;
         if (sub != null) {
             plan = sub.getPlan();

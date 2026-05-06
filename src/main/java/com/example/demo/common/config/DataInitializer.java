@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Configuration
@@ -52,11 +53,11 @@ public class DataInitializer {
         };
     }
 
-    private void createPlanIfNotExist(SubscriptionPlanRepository repo, String name, Double price, Integer maxMonitors, Integer minInterval, String features) {
+    private void createPlanIfNotExist(SubscriptionPlanRepository repo, String name, double price, Integer maxMonitors, Integer minInterval, String features) {
         if (repo.findByName(name).isEmpty()) {
             SubscriptionPlan plan = new SubscriptionPlan();
             plan.setName(name);
-            plan.setPrice(price);
+            plan.setPrice(BigDecimal.valueOf(price));
             plan.setMaxMonitors(maxMonitors);
             plan.setMinInterval(minInterval);
             plan.setFeatures(features);

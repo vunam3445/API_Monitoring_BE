@@ -51,6 +51,21 @@ public class AlertController {
         return ResponseEntity.ok(alertQueryService.findAll(userId, search, status, severity, type, from, to, pageable));
     }
 
+    @GetMapping("/users/{userId}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AlertListResponse> getAlertsByAdmin(
+            @PathVariable UUID userId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) IncidentStatus status,
+            @RequestParam(required = false) IncidentSeverity severity,
+            @RequestParam(required = false) IncidentType type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @PageableDefault(size = 10, sort = "triggeredAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
+
+        return ResponseEntity.ok(alertQueryService.findAll(userId, search, status, severity, type, from, to, pageable));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<com.example.demo.modules.alert.dto.AlertDetailResponse> getById(@PathVariable UUID id) {
         UUID userId = getCurrentUserId();

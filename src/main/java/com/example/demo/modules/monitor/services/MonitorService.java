@@ -3,6 +3,7 @@ package com.example.demo.modules.monitor.services;
 import com.example.demo.common.base.BaseMapper;
 import com.example.demo.common.base.BaseService;
 import com.example.demo.common.cache.ICacheService;
+import com.example.demo.common.exceptions.MonitorNotFoundException;
 import com.example.demo.common.exceptions.ResourceNotFoundException;
 import com.example.demo.common.security.ISecurityContextService;
 import com.example.demo.modules.monitor.dto.ApiResponse;
@@ -33,6 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.LocalDateTime;
+import com.example.demo.modules.subscription.entities.Subscription;
+import com.example.demo.modules.subscription.enums.SubscriptionStatus;
+import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 
 @Service
 public class MonitorService
@@ -44,6 +49,7 @@ public class MonitorService
     private final ISecurityContextService iSecurityContextService;
     private final UserRepository userRepository;
     private final DashboardCacheService dashboardCacheService;
+    private final SubscriptionRepository subscriptionRepository;
 
     public MonitorService(
             MonitorRepository repository,
@@ -53,7 +59,8 @@ public class MonitorService
             ISecurityContextService iSecurityContextService,
             UserRepository userRepository,
             DashboardCacheService dashboardCacheService,
-            MonitorProducer monitorProducer) {
+            MonitorProducer monitorProducer,
+            SubscriptionRepository subscriptionRepository) {
         super(repository, mapper, cacheService);
         this.monitorRepository = repository;
         this.lockService = lockService;
@@ -61,6 +68,7 @@ public class MonitorService
         this.iSecurityContextService = iSecurityContextService;
         this.userRepository = userRepository;
         this.dashboardCacheService = dashboardCacheService;
+        this.subscriptionRepository = subscriptionRepository;
     }
 
     @Override
@@ -68,7 +76,7 @@ public class MonitorService
     public void delete(UUID id) {
         Monitor monitor = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Monitor: " + id));
-        
+
         // Gọi lệnh delete trên instance sẽ kích hoạt JPA Cascade đã cấu hình ở Entity
         repository.delete(monitor);
 
@@ -126,7 +134,8 @@ public class MonitorService
     @Override
     public Boolean retry(UUID id) {
         Monitor monitor = repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy dữ liệu: " + id));
+                .orElseThrow(() -> new MonitorNotFoundException(
+                        "Không tìm thấy Monitor hoặc Monitor đã bị xóa trước đó!"));
 
         String monitorId = monitor.getId().toString();
 
@@ -154,22 +163,26 @@ public class MonitorService
         User user = userRepository.findById(currentUser.getId())
                 .orElseThrow(() -> new AuthenticationException("Không tìm thấy thông tin người dùng."));
 
-        SubscriptionPlan plan = user.getSubscriptionPlan();
-        if (plan == null) {
-            throw new ForbidenException("Người dùng hiện tại chưa có gói đăng ký hợp lệ.");
+        // Lấy gói đăng ký đang hoạt động của người dùng
+        Subscription activeSubscription = subscriptionRepository.findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE)
+                .orElseThrow(() -> new ForbidenException("Bạn không có gói đăng ký nào đang hoạt động."));
+
+        // 1. Kiểm tra thời gian hết hạn của gói
+        if (activeSubscription.getCurrentPeriodEnd() != null && activeSubscription.getCurrentPeriodEnd().isBefore(LocalDateTime.now())) {
+            throw new ForbidenException("Gói đăng ký của bạn đã hết hạn, vui lòng gia hạn để tiếp tục sử dụng.");
         }
 
-        // 1. Kiểm tra số lượng monitor tối đa của gói
+        // 2. Kiểm tra số lượng monitor tối đa của gói
         long currentMonitors = monitorRepository.countByUserId(user.getId());
-        if (currentMonitors >= plan.getMaxMonitors()) {
-            throw new ForbidenException("Bạn đã đạt tới giới hạn tối đa (" + plan.getMaxMonitors()
-                    + ") monitor của gói " + plan.getName() + ".");
+        if (currentMonitors >= activeSubscription.getMaxMonitors()) {
+            throw new ForbidenException("Bạn đã đạt tới giới hạn tối đa (" + activeSubscription.getMaxMonitors()
+                    + ") monitor của gói " + activeSubscription.getPlanName() + ".");
         }
 
-        // 2. Kiểm tra khoảng thời gian check tối thiểu của gói
-        if (request.getCheckInterval() < plan.getMinInterval()) {
-            throw new ForbidenException("Gói " + plan.getName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
-                    + plan.getMinInterval() + " giây.");
+        // 3. Kiểm tra khoảng thời gian check tối thiểu của gói
+        if (request.getCheckInterval() < activeSubscription.getMinInterval()) {
+            throw new ForbidenException("Gói " + activeSubscription.getPlanName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
+                    + activeSubscription.getMinInterval() + " giây.");
         }
 
         // 3. Tạo mới monitor

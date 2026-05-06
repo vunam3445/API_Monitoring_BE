@@ -31,11 +31,30 @@ public class SecurityService {
         UUID currentUserId = user.getId();
 
         try {
-            // JPQL: Truy vấn động dựa trên entityType. Giả định Entity có field 'user'
-            // Đối với UserSetting, field ID là 'userId', nhưng ta sẽ dùng mapping linh hoạt
-            // Lên câu truy vấn chuẩn xác tùy thuộc vào cách Entity mapping cột userId
-            String queryString;
+            String existQueryString;
+            if (entityType.equalsIgnoreCase("UserSetting")) {
+                existQueryString = "SELECT COUNT(e) FROM UserSetting e WHERE e.userId = :targetId";
+            } else {
+                existQueryString = String.format("SELECT COUNT(e) FROM %s e WHERE e.id = :targetId", entityType);
+            }
 
+            Long existCount = entityManager.createQuery(existQueryString, Long.class)
+                    .setParameter("targetId", targetId)
+                    .getSingleResult();
+
+            if (existCount == 0) {
+                if (entityType.equalsIgnoreCase("Monitor")) {
+                    log.error("Không tìm thấy Monitor: {}" + targetId);
+                    throw new com.example.demo.common.exceptions.MonitorNotFoundException(
+                            "Không tìm thấy Monitor hoặc Monitor đã bị xóa trước đó!");
+
+                } else {
+                    throw new com.example.demo.common.exceptions.ResourceNotFoundException(
+                            "Không tìm thấy " + entityType + " với ID: " + targetId);
+                }
+            }
+
+            String queryString;
             if (entityType.equalsIgnoreCase("UserSetting")) {
                 // UserSetting mapping qua thuộc tính 'user' (@OneToOne / @ManyToOne)
                 queryString = "SELECT COUNT(e) FROM UserSetting e WHERE e.userId = :targetId AND e.user.id = :userId";
@@ -43,8 +62,7 @@ public class SecurityService {
                 // Monitor và nhiều Entity khác mapping trực tiếp qua UUID userId
                 queryString = String.format(
                         "SELECT COUNT(e) FROM %s e WHERE e.id = :targetId AND e.userId = :userId",
-                        entityType
-                );
+                        entityType);
             }
 
             Long count = entityManager.createQuery(queryString, Long.class)
@@ -55,6 +73,9 @@ public class SecurityService {
             boolean result = count > 0;
             log.info(">>> [SecurityCheck] Result: {}", result);
             return result;
+        } catch (com.example.demo.common.exceptions.MonitorNotFoundException
+                | com.example.demo.common.exceptions.ResourceNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             log.error(">>> [SecurityCheck] Error during ownership check for {}: {}", entityType, e.getMessage());
             return false;

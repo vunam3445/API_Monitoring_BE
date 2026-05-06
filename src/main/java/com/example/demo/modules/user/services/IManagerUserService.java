@@ -19,4 +19,5 @@ public interface IManagerUserService {
 
     UserStatisticsResponse countUserAndPlanUser();
 
+    void updatePlanForUser(UUID userId, UUID planId);
 }

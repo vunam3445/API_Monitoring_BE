@@ -1,7 +1,7 @@
 package com.example.demo.modules.subscription.enums;
 
 public enum SubscriptionStatus {
-    ACTIVE,
-    EXPIRED,
-    CANCELED
+    ACTIVE,// đăng hoạt động
+    EXPIRED,// đã hết hạn
+    CANCELED,// bị hủy
 }

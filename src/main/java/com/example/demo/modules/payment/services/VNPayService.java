@@ -51,13 +51,13 @@ public class VNPayService implements IPaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Gói đăng ký không tồn tại."));
 
         // 1. Tính toán giá tiền thực tế dựa trên đơn vị tiền tệ
-        double finalPrice = plan.getPrice();
+        BigDecimal finalPrice = plan.getPrice();
         if ("USD".equalsIgnoreCase(plan.getCurrency())) {
-            finalPrice = finalPrice * 25000; // Tạm tính 1 USD = 25,000 VND
+            finalPrice = finalPrice.multiply(BigDecimal.valueOf(25000)); // Tạm tính 1 USD = 25,000 VND
         }
 
         // 2. VNPay yêu cầu số tiền nhân 100 (vnp_Amount tính theo đơn vị nhỏ nhất, VND không có xu nên là n * 100)
-        long amount = (long) (finalPrice * 100);
+        long amount = finalPrice.multiply(BigDecimal.valueOf(100)).longValue();
 
         String vnp_TxnRef = vnPayConfig.getRandomNumber(8);
         String vnp_IpAddr = vnPayConfig.getIpAddress(servletRequest);
@@ -125,13 +125,13 @@ public class VNPayService implements IPaymentService {
                 .orElse(new PaymentLogs());
 
         paymentLog.setUser(user);
-        paymentLog.setAmount(BigDecimal.valueOf(plan.getPrice()));
+        paymentLog.setAmount(plan.getPrice());
         paymentLog.setPlanName(plan.getName());
         paymentLog.setStatus(PaymentStatus.PENDING);
         paymentLog.setTransactionId(vnp_TxnRef);
         paymentLog.setPaymentMethod("VNPAY");
         paymentLog.setCurrency("VND");
-        paymentLog.setSubscription(subscriptionRepository.findByUserId(user.getId()).orElse(null));
+        paymentLog.setSubscription(subscriptionRepository.findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE).orElse(null));
 
         paymentLogsRepository.save(paymentLog);
 
@@ -202,13 +202,13 @@ public class VNPayService implements IPaymentService {
                     user.setPlanType(plan.getName());
 
                     // Cập nhật hoặc tạo Subscription mới
-                    Subscription subscription = subscriptionRepository.findByUserId(userId)
+                    Subscription subscription = subscriptionRepository.findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE)
                             .orElse(new Subscription());
 
                     subscription.setUser(user);
                     subscription.setPlan(plan);
                     subscription.setPlanName(plan.getName());
-                    subscription.setPlanPrice(BigDecimal.valueOf(plan.getPrice()));
+                    subscription.setPlanPrice(plan.getPrice());
                     subscription.setMaxMonitors(plan.getMaxMonitors());
                     subscription.setMinInterval(plan.getMinInterval());
                     subscription.setStartDate(LocalDateTime.now());

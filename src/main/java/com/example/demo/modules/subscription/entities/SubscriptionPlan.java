@@ -7,8 +7,10 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import com.example.demo.modules.subscription.enums.BillingCycle;
 
 @Entity
 @Table(name = "subscription_plans")
@@ -23,11 +25,14 @@ import java.util.UUID;
     private String name;
     @Column(columnDefinition = "TEXT")
     private String description;
-    private Double price;
-    private String currency = "USD";
+    private BigDecimal price;
+    private String currency = "VND";
 
     private Integer maxMonitors;
     private Integer minInterval;
+
+    @Enumerated(EnumType.STRING)
+    private BillingCycle billingCycle = BillingCycle.MONTHLY;
 
     @JdbcTypeCode(SqlTypes.JSON) // Quan trọng nhất: Giúp Hibernate hiểu đây là JSON
     @Column(columnDefinition = "jsonb")

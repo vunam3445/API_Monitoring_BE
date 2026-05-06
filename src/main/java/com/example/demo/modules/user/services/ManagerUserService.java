@@ -2,7 +2,12 @@ package com.example.demo.modules.user.services;
 
 import com.example.demo.common.base.RestPageImpl;
 import com.example.demo.common.exceptions.ForbidenException;
+import com.example.demo.common.exceptions.SubscriptionNotFoundException;
 import com.example.demo.common.exceptions.UserNotFoundException;
+import com.example.demo.modules.subscription.entities.Subscription;
+import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
+import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
+import com.example.demo.modules.subscription.services.ISubscriptionService;
 import com.example.demo.modules.user.dto.UserAdminResponse;
 import com.example.demo.modules.user.dto.UserFilterCriteria;
 import com.example.demo.modules.user.dto.UserStatisticsResponse;
@@ -23,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.example.demo.common.cache.ICacheService;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import com.example.demo.modules.user.dto.PlanUserStatisticItem;
@@ -35,6 +41,8 @@ public class ManagerUserService implements IManagerUserService {
     private final UserMapper mapper;
     private final ISecurityContextService securityContextService;
     private final ICacheService cacheService;
+    private final ISubscriptionService subscriptionService;
+
 
     private static final String CACHE_ADMIN_USERS = "api-monitoring:admin:users:list";
     private static final String CACHE_STATS = "api-monitoring:admin:users:stats";
@@ -152,5 +160,14 @@ public class ManagerUserService implements IManagerUserService {
 
         response.setPlanStatistics(planStatistics);
         return response;
+    }
+
+    @Override
+    public void updatePlanForUser(UUID userId, UUID planId) {
+        // 1. Cập nhật Subscription và User dưới database (Logic uỷ quyền cho SubscriptionService)
+        subscriptionService.updatePlanByAdmin(userId, planId);
+
+        // 2. Xoá cache phía admin để danh sách User/Stats được cập nhật ngay lập tức
+        evictUserCaches(userId);
     }
 }
