@@ -18,6 +18,7 @@ public interface SubscriptionPlanMapper
         extends BaseMapper<SubscriptionPlan, CreatePlanRequest, UpdatePlanRequest, PlanResponse> {
 
     @Override
+    @Mapping(target = "billingCycle", source = "billingCycle")
     SubscriptionPlan toEntity(CreatePlanRequest createRequest);
 
     @Override
@@ -25,5 +26,6 @@ public interface SubscriptionPlanMapper
 
     @Override
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "billingCycle", source = "billingCycle")
     void updateEntityFromDto(UpdatePlanRequest updateRequest, @MappingTarget SubscriptionPlan entity);
 }

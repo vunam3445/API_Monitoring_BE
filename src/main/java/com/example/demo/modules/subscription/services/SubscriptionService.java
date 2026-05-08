@@ -1,8 +1,7 @@
 package com.example.demo.modules.subscription.services;
 
-import com.example.demo.common.exceptions.ResourceNotFoundException;
-import com.example.demo.common.exceptions.SubscriptionNotFoundException;
-import com.example.demo.common.exceptions.UserNotFoundException;
+import com.example.demo.common.exceptions.*;
+import com.example.demo.modules.paymentLogs.entities.PaymentLogs;
 import com.example.demo.modules.paymentLogs.enums.PaymentStatus;
 import com.example.demo.modules.subscription.dto.ManualRenewalRequest;
 import com.example.demo.modules.subscription.entities.Subscription;
@@ -15,6 +14,7 @@ import com.example.demo.modules.user.entities.User;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import com.example.demo.common.cache.ICacheService;
+import com.example.demo.modules.paymentLogs.repositories.PaymentLogsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +32,7 @@ public class SubscriptionService implements ISubscriptionService {
         private final UserRepository userRepository;
         private final DashboardCacheService dashboardCacheService;
         private final ICacheService cacheService;
+        private final PaymentLogsRepository paymentLogsRepository;
 
         /**
          * Kích hoạt gói FREE cho người dùng (Không qua cổng thanh toán)
@@ -104,9 +105,14 @@ public class SubscriptionService implements ISubscriptionService {
                 newSubscription.setMaxMonitors(subscriptionPlan.getMaxMonitors());
                 newSubscription.setMinInterval(subscriptionPlan.getMinInterval());
                 newSubscription.setStartDate(LocalDateTime.now());
-                // Giả sử thời gian hiệu lực dựa trên chu kỳ billing (1 năm cho MONTHLY, 1 tháng
-                // cho MONTHLY nếu có logic), ở đây tạm dùng 1 năm
-                newSubscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(1));
+                if (subscriptionPlan.getBillingCycle() == BillingCycle.MONTHLY) {
+                        newSubscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1));
+                } else if (subscriptionPlan.getBillingCycle() == BillingCycle.YEARLY) {
+                        newSubscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(1));
+                }
+                if(subscriptionPlan.getBillingCycle() == BillingCycle.FREE) {
+                        newSubscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(10));
+                }
                 newSubscription.setBillingCycle(subscriptionPlan.getBillingCycle());
                 newSubscription.setStatus(SubscriptionStatus.ACTIVE);
                 // Do admin cấp, coi thanh toán đã thành công
@@ -119,9 +125,54 @@ public class SubscriptionService implements ISubscriptionService {
 
         }
 
-    @Override
-    public Boolean renewManual(ManualRenewalRequest request) {
-        return null;
-    }
+        @Override
+        @Transactional
+        public Boolean renewManual(UUID userId, ManualRenewalRequest request) {
+                User user = userRepository.findById(userId)
+                                .orElseThrow(() -> new UserNotFoundException("Không tìm thấy user!"));
+                Subscription subscription = subscriptionRepository
+                                .findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE)
+                                .orElseThrow(() -> new UserNotSubscriptionActive("User chưa có gói cước nào!"));
+                if (subscription.getCurrentPeriodEnd().isBefore(LocalDateTime.now())) {
+                        throw new SubscriptionExpiredException("Gói cước đã hết hạn!");
+                }
+
+                switch (request.getType()) {
+                        case "day":
+                                subscription.setCurrentPeriodEnd(
+                                                subscription.getCurrentPeriodEnd().plusDays(request.getTime()));
+                                break;
+                        case "month":
+                                subscription.setCurrentPeriodEnd(
+                                                subscription.getCurrentPeriodEnd().plusMonths(request.getTime()));
+                                break;
+                        case "year":
+                                subscription.setCurrentPeriodEnd(
+                                                subscription.getCurrentPeriodEnd().plusYears(request.getTime()));
+                                break;
+                        default:
+                                break;
+                }
+
+                subscriptionRepository.save(subscription);
+                PaymentLogs paymentLogs = new PaymentLogs();
+                paymentLogs.setUser(user);
+                paymentLogs.setSubscription(subscription);
+                paymentLogs.setAmount(request.getAmount());
+                paymentLogs.setPlanName(subscription.getPlanName());
+                paymentLogs.setInvoiceId(null);
+                paymentLogs.setCurrency(subscription.getCurrency());
+                paymentLogs.setStatus(PaymentStatus.SUCCESS);
+                paymentLogs.setPaymentMethod("MANUAL");
+                paymentLogs.setTransactionId(UUID.randomUUID().toString());
+                paymentLogs.setNotes(request.getNote());
+                paymentLogs.setCreatedAt(LocalDateTime.now());
+                paymentLogsRepository.save(paymentLogs);
+
+                // 3. Xóa cache dashboard để cập nhật thông tin mới
+                dashboardCacheService.clearUserDashboardCache(userId);
+
+                return true;
+        }
 
 }

@@ -38,6 +38,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.UUID;
 
+
 @Service
 public class AuthService {
 
@@ -52,7 +53,11 @@ public class AuthService {
 
     @Value("${google.client-id}")
     private String googleClientId;
+    @Value("${default.avatar-url}")
+    private String defaultAvatarUrl;
 
+    @Value("${default.avatar-public-id}")
+    private String defaultAvatarPublicId;
     public AuthService(UserRepository userRepository,
             SubscriptionPlanRepository planRepository,
             SubscriptionRepository subscriptionRepository,
@@ -86,8 +91,8 @@ public class AuthService {
         // Cập nhật theo DB mới: Sử dụng Enum
         user.setRole(UserRole.USER);
         user.setStatus(UserStatus.ACTIVE);
-        user.setAvatarUrl("https://res.cloudinary.com/dgcb0zg6s/image/upload/v1773922273/default-avatar_xooaz4.png");
-        user.setAvatarPublicId("default-avatar_xooaz4");
+        user.setAvatarUrl(defaultAvatarUrl);
+        user.setAvatarPublicId(defaultAvatarPublicId);
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
         createUserDefaultSettings(user);

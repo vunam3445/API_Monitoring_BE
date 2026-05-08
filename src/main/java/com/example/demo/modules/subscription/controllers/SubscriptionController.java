@@ -2,22 +2,24 @@ package com.example.demo.modules.subscription.controllers;
 
 import com.example.demo.common.exceptions.AuthenticationException;
 import com.example.demo.common.security.ISecurityContextService;
-import com.example.demo.modules.subscription.services.SubscriptionService;
+import com.example.demo.common.security.annotations.IsAdmin;
+import com.example.demo.modules.subscription.dto.ManualRenewalRequest;
 import com.example.demo.modules.user.entities.User;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import com.example.demo.modules.subscription.services.ISubscriptionService;
 
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("api/subscriptions")
 @RequiredArgsConstructor
 public class SubscriptionController {
 
-    private final SubscriptionService subscriptionService;
+    private final ISubscriptionService subscriptionService;
     private final ISecurityContextService securityContextService;
 
     /**
@@ -34,5 +36,12 @@ public class SubscriptionController {
                 "success", true,
                 "message", "Kích hoạt gói FREE thành công."
         ));
+    }
+
+    @IsAdmin
+    @PostMapping("/users/{userId}/manual")
+    public ResponseEntity<Boolean> manualSubscriptionPlan(@PathVariable UUID userId, @Valid @RequestBody ManualRenewalRequest request) {
+        Boolean result = subscriptionService.renewManual(userId, request);
+        return ResponseEntity.ok(result);
     }
 }

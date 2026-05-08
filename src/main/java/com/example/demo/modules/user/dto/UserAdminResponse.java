@@ -25,4 +25,5 @@ public class UserAdminResponse {
     private String planType;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt;
+    private LocalDateTime currentPeriodEnd;
 }

@@ -51,6 +51,15 @@ public class SubscriptionPlanService
     }
 
     @Override
+    protected void evictListCache() {
+        // 1. Xóa cache mặc định của BaseService
+        super.evictListCache();
+        // 2. Xóa các cache đặc thù của SubscriptionPlan
+        cacheService.evictByPrefix("api-monitoring:subscription-plans");
+        cacheService.evictByPrefix("api-monitoring:subscription-plans-all");
+    }
+
+    @Override
     @Cacheable(value = "api-monitoring:subscription-plans", key = "'user_status_' + #userId.toString()", unless = "#result == null")
     public List<PlanResponse> findAllWithUserStatus(UUID userId) {
         // 1. Lấy user để biết đang dùng gói nào

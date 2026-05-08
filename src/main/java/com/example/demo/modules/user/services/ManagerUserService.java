@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import lombok.extern.slf4j.Slf4j;
 import com.example.demo.common.security.ISecurityContextService;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -33,9 +34,12 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import com.example.demo.modules.user.dto.PlanUserStatisticItem;
 
+import com.example.demo.modules.subscription.enums.SubscriptionStatus;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class ManagerUserService implements IManagerUserService {
     private final UserRepository userRepository;
     private final UserMapper mapper;
@@ -58,7 +62,19 @@ public class ManagerUserService implements IManagerUserService {
                 .and(UserSpecification.hasPlanType(userFilterCriteria.getPlanType()))
                 .and(UserSpecification.hasStatus(userFilterCriteria.getStatus())));
         Page<User> users = userRepository.findAll(spec, pageable);
-        List<UserAdminResponse> dtos = mapper.toUserAdminResponseList(users.getContent());
+
+        // Gán currentPeriodEnd trực tiếp từ subscription ACTIVE
+        List<UserAdminResponse> dtos = users.getContent().stream().map(user -> {
+            UserAdminResponse dto = mapper.toUserAdminResponse(user);
+            if (user.getSubscriptions() != null) {
+                user.getSubscriptions().stream()
+                    .filter(s -> s.getStatus() == SubscriptionStatus.ACTIVE)
+                    .findFirst()
+                    .ifPresent(s -> dto.setCurrentPeriodEnd(s.getCurrentPeriodEnd()));
+            }
+            return dto;
+        }).collect(Collectors.toList());
+
         return new RestPageImpl<>(
                 dtos,
                 users.getNumber(),

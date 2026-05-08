@@ -9,5 +9,5 @@ public interface ISubscriptionService {
     void subscribeFreePlan(User user);
     void updatePlanByAdmin(UUID userId, UUID planId);
 
-    Boolean renewManual(ManualRenewalRequest request);
+    Boolean renewManual(UUID userId, ManualRenewalRequest request);
 }

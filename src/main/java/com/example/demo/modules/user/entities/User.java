@@ -52,6 +52,10 @@ public class User implements UserDetails {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "plan_id")
     private SubscriptionPlan subscriptionPlan;
+
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
+    private List<Subscription> subscriptions;
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         // Phải có tiền tố ROLE_

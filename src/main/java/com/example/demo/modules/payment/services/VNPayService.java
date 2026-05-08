@@ -212,8 +212,15 @@ public class VNPayService implements IPaymentService {
                     subscription.setMaxMonitors(plan.getMaxMonitors());
                     subscription.setMinInterval(plan.getMinInterval());
                     subscription.setStartDate(LocalDateTime.now());
-                    subscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1));
-                    subscription.setBillingCycle(BillingCycle.MONTHLY);
+                    if (plan.getBillingCycle() == BillingCycle.MONTHLY) {
+                        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1));
+                    } else if (plan.getBillingCycle() == BillingCycle.YEARLY) {
+                        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(1));
+                    } else if (plan.getBillingCycle() == BillingCycle.FREE) {
+                        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(10));
+                    }
+
+                    subscription.setBillingCycle(plan.getBillingCycle());
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
                     subscription.setPaymentStatus(PaymentStatus.PAID);
 
