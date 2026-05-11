@@ -66,7 +66,8 @@ public interface MonitorMapper extends BaseMapper<Monitor, CreateApiRequest, Upd
             return new AdminUserMonitorStatsDto(0, 0);
         }
 
-        // Với một số trường hợp, Hibernate trả về kết quả là một mảng lồng nhau (Object[][])
+        // Với một số trường hợp, Hibernate trả về kết quả là một mảng lồng nhau
+        // (Object[][])
         Object[] row = (result[0] instanceof Object[]) ? (Object[]) result[0] : result;
 
         // Ép kiểu thông qua lớp Number để đảm bảo an toàn (Long -> int)

@@ -63,3 +63,7 @@ build/
 .env.development
 .env.test
 .env.production
+
+### AI Agent ###
+.agent/
+
