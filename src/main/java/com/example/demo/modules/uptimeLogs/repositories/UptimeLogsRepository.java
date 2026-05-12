@@ -125,5 +125,16 @@ public interface UptimeLogsRepository extends JpaRepository<UptimeLogs, Long>, J
  
     @Query("SELECT COUNT(l) FROM UptimeLogs l WHERE l.monitor.id = :monitorId AND l.isUp = :isUp AND l.checkedAt >= :since")
     long countByMonitorIdAndIsUpAndSince(@Param("monitorId") UUID monitorId, @Param("isUp") Boolean isUp, @Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT " +
+           "l.monitor_id AS monitorId, " +
+           "COUNT(*) AS totalChecks, " +
+           "COUNT(CASE WHEN l.is_up = true THEN 1 END) AS upChecks " +
+           "FROM uptime_logs l " +
+           "WHERE l.monitor_id IN :monitorIds " +
+           "AND l.checked_at >= :since " +
+           "GROUP BY l.monitor_id",
+           nativeQuery = true)
+    List<Object[]> getBulkUptimeStats(@Param("monitorIds") List<UUID> monitorIds, @Param("since") LocalDateTime since);
 }
 

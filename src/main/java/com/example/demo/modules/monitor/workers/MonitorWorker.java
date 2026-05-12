@@ -53,7 +53,6 @@ public class MonitorWorker {
     private final DashboardCacheService dashboardCacheService;
 
     @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
-    @Transactional
     public void processMonitorJob(MonitorExecutionMessage message) {
         String monitorId = message.getMonitorId();
         log.info("Received execution job for monitor: {} (scheduled at: {})",
@@ -69,9 +68,9 @@ public class MonitorWorker {
 
             Monitor monitor = optionalMonitor.get();
 
-            // Kiểm tra monitor vẫn active (có thể bị tắt giữa lúc schedule và execute)
-            if (!Boolean.TRUE.equals(monitor.getIsActive())) {
-                log.info("Monitor {} is no longer active. Skipping.", monitorId);
+            // Kiểm tra monitor vẫn active và không bị khóa (có thể bị tắt giữa lúc schedule và execute)
+            if (!Boolean.TRUE.equals(monitor.getIsActive()) || Boolean.TRUE.equals(monitor.getIsBlock())) {
+                log.info("Monitor {} is no longer active or is blocked. Skipping.", monitorId);
                 return;
             }
 
@@ -116,6 +115,7 @@ public class MonitorWorker {
      * Cập nhật các trường trạng thái gần nhất trên Monitor.
      * Giúp dashboard hiển thị nhanh mà không cần query bảng uptime_logs.
      */
+    @Transactional
     private void updateMonitorStatus(Monitor monitor, UptimeLogs result,
             com.example.demo.modules.user.entities.UserSetting setting) {
         int defaultFailCount = (setting != null) ? setting.getDefaultFailCount() : 3;

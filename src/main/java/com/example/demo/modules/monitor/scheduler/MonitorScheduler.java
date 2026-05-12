@@ -56,6 +56,10 @@ public class MonitorScheduler {
         log.info("Found {} monitors due for checking", dueMonitors.size());
 
         for (Monitor monitor : dueMonitors) {
+            if (!Boolean.TRUE.equals(monitor.getIsActive()) || Boolean.TRUE.equals(monitor.getIsBlock())) {
+                continue;
+            }
+
             String monitorId = monitor.getId().toString();
 
             // Thử claim lock: chỉ 1 instance được xử lý monitor này

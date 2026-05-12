@@ -26,6 +26,7 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
          * - HOẶC nextCheckAt IS NULL (chưa chạy lần nào)
          */
         @Query("SELECT m FROM Monitor m WHERE m.isActive = true " +
+                        "AND (m.isBlock IS NULL OR m.isBlock = false) " +
                         "AND (m.nextCheckAt IS NULL OR m.nextCheckAt <= :now)")
         List<Monitor> findDueMonitors(@Param("now") LocalDateTime now);
 
@@ -42,7 +43,11 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
 
         @Query("SELECT COUNT(m), " +
                 "SUM(CASE WHEN m.isActive = true THEN 1 ELSE 0 END), " +
-                "SUM(CASE WHEN m.lastStatus = com.example.demo.modules.monitor.enums.MonitorStatus.DOWN THEN 1 ELSE 0 END) " +
+                "SUM(CASE WHEN m.lastStatus = com.example.demo.modules.monitor.enums.MonitorStatus.DOWN THEN 1 ELSE 0 END), " +
+                "AVG(m.lastLatencyMs) " +
                 "FROM Monitor m")
         Object[] countGlobalMonitorStats();
+
+        @Query("SELECT m.userId, COUNT(m) FROM Monitor m WHERE m.userId IN :userIds GROUP BY m.userId")
+        List<Object[]> countMonitorsByUserIds(@Param("userIds") List<UUID> userIds);
 }

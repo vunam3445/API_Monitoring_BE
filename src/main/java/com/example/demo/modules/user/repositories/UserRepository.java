@@ -18,6 +18,7 @@ import org.springframework.data.jpa.repository.Query;
 public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
     @Override
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"subscriptions"})
+
     Page<User> findAll(Specification<User> spec, Pageable pageable);
 
     Optional<User> findByEmail(String email);

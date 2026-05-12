@@ -6,7 +6,10 @@ import com.example.demo.modules.monitor.dto.MonitorStatisticsDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.UUID;
+
 public interface IManagerMonitorService {
     Page<ApiResponse> getAllMonitors(MonitorFilterCriteria criteria, Pageable pageable);
     MonitorStatisticsDTO getMonitorStatistics();
+    Boolean blockMonitor(UUID monitorId);
 }

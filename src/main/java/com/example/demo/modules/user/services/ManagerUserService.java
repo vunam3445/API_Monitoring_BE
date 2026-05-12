@@ -17,6 +17,7 @@ import com.example.demo.modules.user.enums.UserRole;
 import com.example.demo.modules.user.mappers.UserMapper;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.user.repositories.UserSpecification;
+import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,7 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.example.demo.common.cache.ICacheService;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -46,6 +49,7 @@ public class ManagerUserService implements IManagerUserService {
     private final ISecurityContextService securityContextService;
     private final ICacheService cacheService;
     private final ISubscriptionService subscriptionService;
+    private final MonitorRepository monitorRepository;
 
 
     private static final String CACHE_ADMIN_USERS = "api-monitoring:admin:users:list";
@@ -63,15 +67,29 @@ public class ManagerUserService implements IManagerUserService {
                 .and(UserSpecification.hasStatus(userFilterCriteria.getStatus())));
         Page<User> users = userRepository.findAll(spec, pageable);
 
-        // Gán currentPeriodEnd trực tiếp từ subscription ACTIVE
+        // Tối ưu N+1: Lấy trước toàn bộ monitor count của user trong page
+        List<UUID> userIds = users.getContent().stream().map(User::getId).collect(Collectors.toList());
+        Map<UUID, Long> monitorCounts = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<Object[]> countsResult = monitorRepository.countMonitorsByUserIds(userIds);
+            for (Object[] row : countsResult) {
+                monitorCounts.put((UUID) row[0], ((Number) row[1]).longValue());
+            }
+        }
+
+        // Gán currentPeriodEnd và maxMonitors từ subscription ACTIVE
         List<UserAdminResponse> dtos = users.getContent().stream().map(user -> {
             UserAdminResponse dto = mapper.toUserAdminResponse(user);
             if (user.getSubscriptions() != null) {
                 user.getSubscriptions().stream()
                     .filter(s -> s.getStatus() == SubscriptionStatus.ACTIVE)
                     .findFirst()
-                    .ifPresent(s -> dto.setCurrentPeriodEnd(s.getCurrentPeriodEnd()));
+                    .ifPresent(s -> {
+                        dto.setCurrentPeriodEnd(s.getCurrentPeriodEnd());
+                        dto.setMaxMonitors(s.getMaxMonitors() != null ? s.getMaxMonitors() : 0L);
+                    });
             }
+            dto.setMonitors(monitorCounts.getOrDefault(user.getId(), 0L));
             return dto;
         }).collect(Collectors.toList());
 

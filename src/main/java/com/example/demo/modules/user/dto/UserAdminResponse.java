@@ -26,4 +26,6 @@ public class UserAdminResponse {
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt;
     private LocalDateTime currentPeriodEnd;
+    private long monitors;
+    private long maxMonitors;
 }

@@ -210,4 +210,10 @@ public class Monitor {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+    /**
+     * monitor cho bị chặn do admin không
+     * **/
+    @Builder.Default
+    @Column(name = "is_block")
+    private Boolean isBlock = false;
 }
