@@ -183,6 +183,7 @@ public class MonitorWorker {
         cacheService.evict("monitoring:key-health:" + monitor.getUserId());
         cacheService.evictByPrefix("monitoring:recent-events:" + monitor.getUserId());
         cacheService.evict("monitoring:overview:" + monitor.getId());
+        cacheService.evictByPrefix("admin:dashboard::"); // Xóa cache admin dashboard
         dashboardCacheService.clearUserDashboardCache(monitor.getUserId());
     }
 }
