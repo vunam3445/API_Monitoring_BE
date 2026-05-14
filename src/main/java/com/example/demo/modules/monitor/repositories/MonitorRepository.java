@@ -34,6 +34,8 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
 
         long countByUserIdAndLastStatus(UUID userId, MonitorStatus status);
 
+        long countByLastStatus(MonitorStatus status);
+
         long countByUserIdAndIsActive(UUID userId, boolean isActive);
 
         @Query("SELECT COUNT(m), SUM(CASE WHEN m.isActive = true THEN 1 ELSE 0 END) " + // Thêm dấu cách ở cuối
@@ -44,10 +46,17 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
         @Query("SELECT COUNT(m), " +
                 "SUM(CASE WHEN m.isActive = true THEN 1 ELSE 0 END), " +
                 "SUM(CASE WHEN m.lastStatus = com.example.demo.modules.monitor.enums.MonitorStatus.DOWN THEN 1 ELSE 0 END), " +
-                "AVG(m.lastLatencyMs) " +
+                "AVG(m.lastLatencyMs), " +
+                "SUM(CASE WHEN m.isActive = true AND (m.isBlock = false OR m.isBlock IS NULL) " +
+                "THEN ((CAST(COALESCE(m.lastLatencyMs, 1000) AS Double) + 100.0) / (m.checkInterval * 1000.0)) " +
+                "ELSE 0 END), " +
+                "SUM(60.0 / m.checkInterval) " +
                 "FROM Monitor m")
-        Object[] countGlobalMonitorStats();
+        List<Object[]> countGlobalMonitorStats();
 
         @Query("SELECT m.userId, COUNT(m) FROM Monitor m WHERE m.userId IN :userIds GROUP BY m.userId")
         List<Object[]> countMonitorsByUserIds(@Param("userIds") List<UUID> userIds);
+
+        @Query("SELECT SUM(60.0 / m.checkInterval) FROM Monitor m WHERE m.isActive = true AND (m.isBlock = false OR m.isBlock IS NULL)")
+        Double countActiveChecksPerMinute();
 }

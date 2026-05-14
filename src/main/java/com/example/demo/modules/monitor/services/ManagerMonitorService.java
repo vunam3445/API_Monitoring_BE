@@ -120,13 +120,8 @@ public class ManagerMonitorService implements IManagerMonitorService {
     }
 
     public MonitorStatisticsDTO getMonitorStatistics() {
-        Object[] result = monitorRepository.countGlobalMonitorStats();
-
-        // Kiểm tra nếu kết quả trả về bị lồng trong một mảng khác (thường gặp trong
-        // Hibernate aggregate query)
-        Object[] row = (result != null && result.length > 0 && result[0] instanceof Object[])
-                ? (Object[]) result[0]
-                : result;
+        List<Object[]> results = monitorRepository.countGlobalMonitorStats();
+        Object[] row = (results != null && !results.isEmpty()) ? results.get(0) : null;
 
         MonitorStatisticsDTO dto = new MonitorStatisticsDTO();
         if (row != null && row.length >= 3) {
@@ -134,23 +129,19 @@ public class ManagerMonitorService implements IManagerMonitorService {
             dto.setActiveMonitors(row[1] != null ? ((Number) row[1]).longValue() : 0);
             dto.setDownMonitors(row[2] != null ? ((Number) row[2]).longValue() : 0);
             
-            // Tính toán tài nguyên thực tế
-            // Lấy thời gian phản hồi trung bình (nếu null thì giả định 1000ms)
-            double avgLatencyMs = (row.length > 3 && row[3] != null) ? ((Number) row[3]).doubleValue() : 1000.0;
-            if (avgLatencyMs <= 0) avgLatencyMs = 1000.0;
+            // Tính toán Platform Capacity theo Worker Occupancy
+            // row[4] là tổng occupancy ratio của các monitor đang hoạt động
+            double totalOccupancy = (row.length > 4 && row[4] != null) ? ((Number) row[4]).doubleValue() : 0.0;
             
-            // Tính toán sức chứa tối đa mỗi phút
-            // Công thức: Số Workers * (60000ms / Thời gian phản hồi trung bình)
-            // Thêm 100ms overhead cho Database/Network
-            double maxCapacityPerMinute = workerConcurrency * (60000.0 / (avgLatencyMs + 100));
-            
-            // Tính Platform Capacity: Tỷ lệ giữa số Monitor hiện có và sức chứa tối đa
-            double capacity = 0;
-            if (maxCapacityPerMinute > 0) {
-                capacity = (dto.getTotalMonitors() / maxCapacityPerMinute) * 100;
+            // Platform Capacity = (Tổng Occupancy / Số lượng Worker) * 100
+            double capacityRatio = 0;
+            if (workerConcurrency > 0) {
+                capacityRatio = (totalOccupancy / workerConcurrency) * 100;
             }
-            capacity = Math.min(Math.max(capacity, 0), 100);
-            dto.setPlatformCapacity(capacity);
+            
+            // Giới hạn trong khoảng [0, 100] và gán vào DTO
+            capacityRatio = Math.min(Math.max(capacityRatio, 0), 100);
+            dto.setPlatformCapacity(capacityRatio);
         }
         return dto;
     }

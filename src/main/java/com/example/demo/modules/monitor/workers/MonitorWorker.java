@@ -51,9 +51,16 @@ public class MonitorWorker {
     private final com.example.demo.common.cache.ICacheService cacheService;
     private final IIncidentService incidentService;
     private final DashboardCacheService dashboardCacheService;
+    private final com.example.demo.modules.system.services.ISystemSettingService systemSettingService;
 
     @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
     public void processMonitorJob(MonitorExecutionMessage message) {
+        // 0. Kiểm tra trạng thái Global Pause
+        if (systemSettingService.isGlobalPaused()) {
+            log.info("System is currently under GLOBAL PAUSE. Skipping job for monitor: {}", message.getMonitorId());
+            return;
+        }
+
         String monitorId = message.getMonitorId();
         log.info("Received execution job for monitor: {} (scheduled at: {})",
                 monitorId, message.getScheduledAt());

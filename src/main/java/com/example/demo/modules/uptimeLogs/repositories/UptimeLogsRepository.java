@@ -136,5 +136,36 @@ public interface UptimeLogsRepository extends JpaRepository<UptimeLogs, Long>, J
            "GROUP BY l.monitor_id",
            nativeQuery = true)
     List<Object[]> getBulkUptimeStats(@Param("monitorIds") List<UUID> monitorIds, @Param("since") LocalDateTime since);
+
+    @Query("SELECT AVG(l.responseTimeMs) FROM UptimeLogs l WHERE l.checkedAt >= :since AND l.responseTimeMs IS NOT NULL")
+    Double getAvgLatencyGlobal(@Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT " +
+           "COUNT(*) AS totalChecks, " +
+           "COUNT(CASE WHEN l.is_up = true THEN 1 END) AS upChecks " +
+           "FROM uptime_logs l " +
+           "WHERE l.checked_at >= :since",
+           nativeQuery = true)
+    List<Object[]> getGlobalUptimeStats(@Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT " +
+           "m.method AS method, " +
+           "COUNT(*) AS count " +
+           "FROM uptime_logs l " +
+           "JOIN monitors m ON l.monitor_id = m.id " +
+           "WHERE m.is_active = true " +
+           "AND l.checked_at >= :since " +
+           "GROUP BY m.method",
+           nativeQuery = true)
+    List<Object[]> getMethodDistribution(@Param("since") LocalDateTime since);
+
+    @Query(value = "SELECT " +
+           "to_timestamp(floor(extract(epoch from l.checked_at) / :seconds) * :seconds) AS time, " +
+           "AVG(l.response_time_ms) AS avgResponseTimeMs " +
+           "FROM uptime_logs l " +
+           "WHERE l.checked_at >= :since " +
+           "GROUP BY time ORDER BY time ASC",
+           nativeQuery = true)
+    List<Object[]> getGlobalResponseTimeTrend(@Param("since") LocalDateTime since, @Param("seconds") int seconds);
 }
 

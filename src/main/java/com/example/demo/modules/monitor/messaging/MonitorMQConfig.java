@@ -70,4 +70,12 @@ public class MonitorMQConfig {
         template.setMessageConverter(jsonMessageConverter);
         return template;
     }
+
+    /**
+     * RabbitAdmin dùng để quản lý queue và lấy thông tin runtime (ví dụ: message count).
+     */
+    @Bean
+    public org.springframework.amqp.rabbit.core.RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        return new org.springframework.amqp.rabbit.core.RabbitAdmin(connectionFactory);
+    }
 }
