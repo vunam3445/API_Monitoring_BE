@@ -119,6 +119,12 @@ public class IncidentService implements IIncidentService {
      * Tránh gửi liên tục mỗi 1-2 phút (Alert Fatigue).
      */
     private boolean shouldNotify(Incident incident, boolean isNew) {
+        // 0. Kiểm tra nếu monitor đang bị Mute (tắt tiếng)
+        if (Boolean.TRUE.equals(incident.getMonitor().getIsMuted())) {
+            log.info("shouldNotify: false (Monitor is MUTED)");
+            return false;
+        }
+
         if (isNew) {
             log.info("shouldNotify: true (New Incident)");
             return true;

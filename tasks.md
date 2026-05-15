@@ -1,53 +1,104 @@
-# TASK: Admin Dashboard System Overview Implementation
+# Task: Tích hợp API cho Revenue Analytics Dashboard
 
-## 1. Mục tiêu
-Hoàn thiện giao diện Admin Dashboard (System Overview) với đầy đủ các số liệu thống kê real-time, biểu đồ xu hướng, và khả năng điều khiển hệ thống toàn cục.
+## 1. API Tổng quan doanh thu (Stats)
+**Route:** `GET /api/admin/revenue/stats`  
+**Mô tả:** Trả về các chỉ số tài chính và trạng thái gói cước hiện tại.  
+**Đầu ra:**
+```json
+{
+  "totalRevenue": 1240000.0,
+  "revenueGrowth": 12.5,
+  "mrr": 98500.0,
+  "mrrGrowth": 8.2,
+  "activeSubscriptions": 3842,
+  "subsGrowth": 15.0,
+  "expiringSoon": 142,
+  "arpu": 27.9,
+  "ltv": 1450.0
+}
+```
 
----
+## 2. API Biểu đồ doanh thu (Charts)
+**Route:** `GET /api/admin/revenue/charts?period=last_30_days`  
+**Mô tả:** Trả về dữ liệu chuỗi thời gian để vẽ biểu đồ doanh thu.  
+**Đầu ra:**
+```json
+{
+  "labels": ["01 May", "02 May", ...],
+  "datasets": [
+    {
+      "label": "Revenue",
+      "data": [1200, 1500, 1100, ...]
+    }
+  ]
+}
+```
 
-## 2. Giai đoạn 1: Hạ tầng & Điều khiển (System Control)
-- [x] **Database & Entity**: Tạo bảng `system_settings` để lưu cờ `GLOBAL_MONITORING_PAUSE`.
-- [x] **Service Logic**: 
-    - Implement `SystemSettingService` để quản lý việc Bật/Tắt chế độ Pause.
-    - Cập nhật các Worker (Monitoring Workers) để kiểm tra trạng thái Pause trước khi thực thi job.
-- [x] **Queue Management**: Implement API gọi `amqpAdmin.purgeQueue()` để thực hiện tính năng "Flush Job Queue".
+## 3. API Phân tích người dùng & Đăng ký (Analytics)
+**Route:** `GET /api/admin/revenue/subscription-analytics`  
+**Mô tả:** Trả về dữ liệu so sánh các nhóm người dùng và xu hướng.  
+**Đầu ra:**
+```json
+{
+  "usersComparison": {
+    "free": 12450,
+    "paid": 3520
+  },
+  "upgradeTrends": {
+    "count": 245,
+    "growth": 18.4
+  },
+  "churnMetrics": {
+    "rate": 2.1,
+    "status": "Good"
+  }
+}
+```
 
----
+## 4. API Chi tiết hiệu quả gói cước (Plan Breakdown)
+**Route:** `GET /api/admin/revenue/plan-breakdown`  
+**Mô tả:** Thống kê chi tiết từng loại gói cước (thay thế cho quản lý subscription cũ).  
+**Đầu ra:**
+```json
+[
+  {
+    "id": "free",
+    "name": "Free Plan",
+    "activeSubscribers": 12450,
+    "monthlyRevenue": 0.0,
+    "churned30d": 452,
+    "retention": 92.0,
+    "growth": 0
+  },
+  {
+    "id": "pro",
+    "name": "Pro Plan",
+    "activeSubscribers": 3200,
+    "monthlyRevenue": 156800.0,
+    "churned30d": 12,
+    "retention": 99.2,
+    "growth": 14.5
+  }
+]
+```
 
-## 3. Giai đoạn 2: API Thống kê & Biểu đồ (Metrics Aggregation)
-- [x] **Summary Stats API**: Viết API `/admin/dashboard/stats` tính toán:
-    - Tổng API, số lượng Healthy/Warning/Down.
-    - Avg Latency.
-    - Checks per minute.
-- [x] **Charts API**: Viết các API cho biểu đồ (hỗ trợ tham số `range` mặc định 1 day):
-    - `Response Time Trend`: Dữ liệu chuỗi thời gian (Timeseries).
-    - `Global Uptime %`: Tỉ lệ uptime hệ thống.
-    - `Method Distribution`: Tỉ lệ GET/POST/OTHER của các monitor đang active.
-- [x] **Caching**: Áp dụng Redis Cache cho các API thống kê này để tối ưu performance.
-
----
-
-## 4. Giai đoạn 3: Tích hợp Actuator & System Health
-- [ ] **Spring Boot Actuator**: 
-    - Cấu hình Actuator để expose các metrics về CPU, RAM, Disk.
-    - Viết Service lấy dữ liệu từ Actuator và kết nối Database để trả về cho API `/admin/dashboard/system-health`.
-- [ ] **Queue Monitoring**: Lấy số lượng message đang chờ (Pending) từ RabbitMQ Management API hoặc `RabbitAdmin`.
-
----
-
-## 5. Giai đoạn 4: Frontend Integration & Polish
-- [ ] **API Integration**: Kết nối các API mới vào giao diện Admin Dashboard FE.
-- [ ] **Real-time Error Rate**: Hiển thị tỉ lệ lỗi thời gian thực dựa trên logs gần nhất.
-- [ ] **UI Actions**: 
-    - Gắn logic cho nút "Pause Global Monitoring" (với cảnh báo xác nhận).
-    - Gắn logic cho nút "Flush Job Queue".
-    - Gắn logic cho nút "Refresh Monitoring".
-- [ ] **Fix Bug**: Xử lý triệt để lỗi hiển thị `undefinedms` bằng cách map đúng field từ DTO.
-
----
-
-## 6. Definition of Done
-- [ ] Dashboard hiển thị đầy đủ và chính xác dữ liệu như mockup.
-- [ ] Chế độ Pause hoạt động trên toàn hệ thống.
-- [ ] Flush Queue xóa sạch hàng đợi thành công.
-- [ ] Hệ thống hoạt động ổn định, không làm chậm database khi query aggregate.
+## 5. API Danh sách giao dịch (Transactions)
+**Route:** `GET /api/admin/revenue/recent-transactions?page=0&size=10`  
+**Mô tả:** Lấy danh sách các giao dịch thanh toán mới nhất.  
+**Đầu ra:**
+```json
+{
+  "content": [
+    {
+      "id": "TXN-8821",
+      "userName": "Alex Rivera",
+      "userEmail": "alex@rivera.com",
+      "amount": 490.0,
+      "plan": "Pro Yearly",
+      "date": "2023-05-12T10:00:00Z",
+      "status": "SUCCESS"
+    }
+  ],
+  "totalElements": 1284
+}
+```
