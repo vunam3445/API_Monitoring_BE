@@ -3,12 +3,19 @@ package com.example.demo.modules.dashboard.services;
 import com.example.demo.modules.dashboard.dto.*;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
+import com.example.demo.modules.alert.repositories.IncidentRepository;
+import com.example.demo.modules.revenue.services.IRevenueService;
+import com.example.demo.modules.user.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.text.DecimalFormat;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,8 +26,221 @@ public class AdminDashboardServiceImpl implements IAdminDashboardService {
 
     private final MonitorRepository monitorRepository;
     private final UptimeLogsRepository uptimeLogsRepository;
+    private final UserRepository userRepository;
+    private final IncidentRepository incidentRepository;
+    private final IRevenueService revenueService;
+    private final com.example.demo.modules.system.services.IAdminSystemService adminSystemService;
 
     private static final String CACHE_ADMIN_DASHBOARD = "admin:dashboard";
+
+    @Override
+    @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:stats:' + #range")
+    public AdminDashboardV2StatsResponse getV2Stats(String range) {
+        LocalDateTime since = parseRange(range);
+        int minutes = calculateBucketMinutes(range);
+        LocalDateTime prevSince = since.minusMinutes(minutes);
+
+        // 1. Total APIs
+        long totalApis = monitorRepository.count();
+        long newApis = monitorRepository.countByCreatedAtAfter(since);
+        long prevNewApis = monitorRepository.countByCreatedAtAfter(prevSince) - newApis;
+        String apiTrendStr = calculateGrowthStr(newApis, prevNewApis);
+
+        var totalApiStat = AdminDashboardV2StatsResponse.StatItem.builder()
+                .value(String.valueOf(totalApis))
+                .subValue("Total Monitors")
+                .trend(apiTrendStr)
+                .trendUp(newApis >= prevNewApis)
+                .build();
+
+        // 2. Warning APIs
+        long warningApis = monitorRepository.countByLastStatus(com.example.demo.modules.monitor.enums.MonitorStatus.WARNING);
+        var warningApiStat = AdminDashboardV2StatsResponse.StatItem.builder()
+                .value(String.valueOf(warningApis))
+                .subValue("Needs Attention")
+                .trend("")
+                .trendUp(false)
+                .build();
+
+        // 3. Down APIs
+        long downApis = monitorRepository.countByLastStatus(com.example.demo.modules.monitor.enums.MonitorStatus.DOWN);
+        var downApiStat = AdminDashboardV2StatsResponse.StatItem.builder()
+                .value(String.valueOf(downApis))
+                .subValue("Critical Issues")
+                .trend("")
+                .trendUp(false)
+                .build();
+
+        // 4. Avg Latency
+        Double avgLatency = uptimeLogsRepository.getAvgLatencyGlobal(since);
+        double currentLatency = avgLatency != null ? avgLatency : 0.0;
+        
+        var latencyStat = AdminDashboardV2StatsResponse.StatItem.builder()
+                .value(String.format("%.0fms", currentLatency))
+                .subValue("Response Time")
+                .trend("")
+                .trendUp(false)
+                .build();
+
+        // 5. Checks/min
+        List<Object[]> uptimeStats = uptimeLogsRepository.getGlobalUptimeStats(since);
+        long totalChecks = 0;
+        if (!uptimeStats.isEmpty() && uptimeStats.get(0) != null) {
+            totalChecks = uptimeStats.get(0)[0] != null ? ((Number) uptimeStats.get(0)[0]).longValue() : 0;
+        }
+        
+        double checksPerMin = minutes > 0 ? (double) totalChecks / minutes : 0;
+        
+        var checksStat = AdminDashboardV2StatsResponse.StatItem.builder()
+                .value(String.format("%.1f", checksPerMin))
+                .subValue("Checks/Min")
+                .trend("")
+                .trendUp(true)
+                .build();
+
+        return AdminDashboardV2StatsResponse.builder()
+                .totalApis(totalApiStat)
+                .warningApis(warningApiStat)
+                .downApis(downApiStat)
+                .avgLatency(latencyStat)
+                .checksPerMin(checksStat)
+                .build();
+    }
+
+    @Override
+    @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:performance:' + #range")
+    public AdminPerformanceResponse getPerformance(String range) {
+        LocalDateTime since = parseRange(range);
+        
+        Double avgLatency = uptimeLogsRepository.getAvgLatencyGlobal(since);
+        UptimeGaugeResponse uptimeStats = getGlobalUptime(range);
+
+        // Tính Error Rate thực từ DB: số lần check thất bại / tổng số lần check
+        List<Object[]> errorStats = uptimeLogsRepository.getGlobalErrorRateStats(since);
+        double errorRate = 0.0;
+        if (!errorStats.isEmpty() && errorStats.get(0) != null) {
+            Object[] row = errorStats.get(0);
+            long total = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+            long failed = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+            errorRate = total > 0 ? (double) failed / total * 100 : 0.0;
+        }
+
+        // Generate Chart Data (15-20 points)
+        List<Double> chartData = new ArrayList<>();
+        ResponseTimeChartResponse trend = getGlobalResponseTimeTrend(range);
+        if (trend.getPoints() != null) {
+            chartData = trend.getPoints().stream()
+                    .map(p -> p.getAvgLatencyMs())
+                    .limit(20)
+                    .collect(Collectors.toList());
+        }
+
+        return AdminPerformanceResponse.builder()
+                .avgResponseTime(String.format("%.0fms", avgLatency != null ? avgLatency : 0.0))
+                .uptimePercentage(String.format("%.2f%%", uptimeStats.getUptimePercentage()))
+                .errorRate(String.format("%.2f%%", errorRate))
+                .chartData(chartData)
+                .build();
+    }
+
+    @Override
+    @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:infrastructure'")
+    public AdminInfrastructureResponse getInfrastructure() {
+        int activeWorkers = adminSystemService.getActiveWorkerCount();
+        int totalWorkers = adminSystemService.getTotalWorkerCount();
+        double dbLoadPercent = adminSystemService.getDbLoadPercent();
+        long uptimeMs = adminSystemService.getServerUptimeMs();
+
+        // Lấy số lượng message thực trong queue để đánh giá trạng thái
+        int queueDepth = adminSystemService.getQueueMessageCount();
+        String queueLabel;
+        String queueType;
+        if (queueDepth == 0) {
+            queueLabel = "Healthy";
+            queueType = "HEALTHY";
+        } else if (queueDepth < 50) {
+            queueLabel = "Busy (" + queueDepth + " pending)";
+            queueType = "BUSY";
+        } else {
+            queueLabel = "Overloaded (" + queueDepth + " pending)";
+            queueType = "OVERLOADED";
+        }
+
+        return AdminInfrastructureResponse.builder()
+                .workers(AdminInfrastructureResponse.WorkerStatus.builder()
+                        .active(activeWorkers)
+                        .total(totalWorkers)
+                        .build())
+                .dbLoad(String.format("%.1f%%", dbLoadPercent))
+                .serverUptime(formatUptime(uptimeMs))
+                .queueStatus(AdminInfrastructureResponse.QueueStatus.builder()
+                        .label(queueLabel)
+                        .type(queueType)
+                        .build())
+                .build();
+    }
+
+    @Override
+    @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:activity'")
+    public List<AdminActivityResponse> getLatestActivity() {
+        return uptimeLogsRepository.findLatestLogsGlobal(PageRequest.of(0, 10)).stream()
+                .map(log -> {
+                    String status = "HEALTHY";
+                    if (!log.getIsUp()) {
+                        status = "TIMEOUT".equalsIgnoreCase(log.getErrorType()) ? "TIMEOUT" : "ERROR";
+                    }
+
+                    return AdminActivityResponse.builder()
+                            .apiName(log.getMonitor().getName())
+                            .owner(log.getMonitor().getUser() != null ? log.getMonitor().getUser().getEmail() : "System")
+                            .endpoint(log.getMonitor().getUrl())
+                            .responseTime(log.getResponseTimeMs() != null ? log.getResponseTimeMs() + "ms" : "N/A")
+                            .status(status)
+                            .lastCheck(calculateRelativeTime(log.getCheckedAt()))
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    private String calculateRelativeTime(LocalDateTime checkedAt) {
+        if (checkedAt == null) return "Unknown";
+        long seconds = java.time.Duration.between(checkedAt, LocalDateTime.now()).getSeconds();
+        if (seconds < 60) return seconds + "s ago";
+        if (seconds < 3600) return (seconds / 60) + " mins ago";
+        if (seconds < 86400) return (seconds / 3600) + " hours ago";
+        return (seconds / 86400) + " days ago";
+    }
+
+    /**
+     * Tính chuỗi % tăng trưởng giữa giá trị hiện tại và giá trị kỳ trước.
+     * Ví dụ: current=10, previous=8 → "+25.0%"
+     */
+    private String calculateGrowthStr(long current, long previous) {
+        if (previous == 0) {
+            return current > 0 ? "+100%" : "0%";
+        }
+        double growth = (double) (current - previous) / previous * 100;
+        return String.format("%+.1f%%", growth);
+    }
+
+    /**
+     * Chuyển đổi thời gian uptime từ milliseconds sang chuỗi dễ đọc.
+     * Ví dụ: 123456789 ms → "1 Days 10 Hrs" hoặc "5 Hrs 30 Mins".
+     */
+    private String formatUptime(long uptimeMs) {
+        long totalSeconds = uptimeMs / 1000;
+        long days = totalSeconds / 86400;
+        long hours = (totalSeconds % 86400) / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+
+        if (days > 0) {
+            return days + " Days " + hours + " Hrs";
+        } else if (hours > 0) {
+            return hours + " Hrs " + minutes + " Mins";
+        } else {
+            return minutes + " Mins";
+        }
+    }
 
     @Override
     @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'stats'")
@@ -170,6 +390,18 @@ public class AdminDashboardServiceImpl implements IAdminDashboardService {
             case "1d":
             default:
                 return 3600;
+        }
+    }
+
+    private int calculateBucketMinutes(String range) {
+        if (range == null) return 1440; // 1 day
+        switch (range.toLowerCase()) {
+            case "1h": return 60;
+            case "6h": return 360;
+            case "7d": return 10080;
+            case "30d": return 43200;
+            case "1d":
+            default: return 1440;
         }
     }
 }

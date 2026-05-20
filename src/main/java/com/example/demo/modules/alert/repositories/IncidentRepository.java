@@ -22,18 +22,16 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
     // Tìm incident active theo monitor + type để gộp incident TRÁNH TRÙNG
     @Query("SELECT i FROM Incident i WHERE i.monitor.id = :monitorId AND i.type = :type AND i.status IN :statusList")
     Optional<Incident> findActiveIncident(@Param("monitorId") UUID monitorId,
-            @Param("type") IncidentType type,
-            @Param("statusList") Collection<IncidentStatus> statusList);
+                                          @Param("type") IncidentType type,
+                                          @Param("statusList") Collection<IncidentStatus> statusList);
 
     /**
-     * Tìm tất cả alert đang active/acknowledged của 1 monitor để resolve khi nó hồi
-     * phục.
+     * Tìm tất cả alert đang active/acknowledged của 1 monitor để resolve khi nó hồi phục.
      */
     List<Incident> findAllByMonitorIdAndStatusIn(UUID monitorId, Collection<IncidentStatus> statuses);
 
     // Tìm incident active bất kỳ cho 1 monitor
-    Optional<Incident> findFirstByMonitorIdAndStatusInOrderByTriggeredAtDesc(UUID monitorId,
-            Collection<IncidentStatus> statuses);
+    Optional<Incident> findFirstByMonitorIdAndStatusInOrderByTriggeredAtDesc(UUID monitorId, Collection<IncidentStatus> statuses);
 
     // Summary counts
     @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.triggeredAt >= :since")
@@ -48,24 +46,20 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
     @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.status = com.example.demo.modules.alert.enums.IncidentStatus.RESOLVED AND i.triggeredAt >= :since")
     long countResolvedAlerts(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
 
-    @Query(value = "SELECT " +
-            "i.monitor_id AS monitorId, " +
-            "COUNT(*) AS incidentCount, " +
-            "SUM(EXTRACT(EPOCH FROM (COALESCE(i.resolved_at, CURRENT_TIMESTAMP) - i.triggered_at)) / 60) AS downtimeMinutes "
-            +
+    @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.triggeredAt >= :start AND i.triggeredAt <= :end")
+    long countIncidentInDateRange(@Param("userId") UUID userId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    long countByTriggeredAtAfter(LocalDateTime time);
+
+    @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.triggeredAt <= :time AND (i.resolvedAt IS NULL OR i.resolvedAt > :time)")
+    long countActiveAlertsAtTime(@Param("userId") UUID userId, @Param("time") LocalDateTime time);
+
+    @Query(value = "SELECT i.monitor_id AS monitorId, " +
+            "COUNT(i.id) AS incidentCount, " +
+            "SUM(EXTRACT(EPOCH FROM (COALESCE(i.resolved_at, CURRENT_TIMESTAMP) - i.triggered_at)) / 60) AS downtimeMinutes " +
             "FROM incidents i " +
             "JOIN monitors m ON i.monitor_id = m.id " +
-            "WHERE m.user_id = :userId " +
-            "AND i.triggered_at >= :since " +
+            "WHERE m.user_id = :userId AND i.triggered_at >= :since " +
             "GROUP BY i.monitor_id", nativeQuery = true)
     List<Object[]> getIncidentStats(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
-
-    @Query("SELECT COUNT(i) FROM Incident i "
-            + "JOIN i.monitor m "
-            + "WHERE m.userId = :userId "
-            + "AND i.triggeredAt >= :startDate "
-            + "AND i.triggeredAt <= :endDate ")
-    long countIncidentInDateRange(@Param("userId") UUID userId,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate);
 }

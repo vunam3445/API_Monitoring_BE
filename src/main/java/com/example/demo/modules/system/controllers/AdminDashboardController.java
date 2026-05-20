@@ -16,8 +16,23 @@ public class AdminDashboardController {
     private final com.example.demo.modules.dashboard.services.IAdminDashboardService adminDashboardService;
 
     @GetMapping("/stats")
-    public ResponseEntity<?> getStats() {
-        return ResponseEntity.ok(adminDashboardService.getGlobalStats());
+    public ResponseEntity<?> getStats(@RequestParam(defaultValue = "1d") String range) {
+        return ResponseEntity.ok(adminDashboardService.getV2Stats(range));
+    }
+
+    @GetMapping("/performance")
+    public ResponseEntity<?> getPerformance(@RequestParam(defaultValue = "1d") String range) {
+        return ResponseEntity.ok(adminDashboardService.getPerformance(range));
+    }
+
+    @GetMapping("/infrastructure")
+    public ResponseEntity<?> getInfrastructure() {
+        return ResponseEntity.ok(adminDashboardService.getInfrastructure());
+    }
+
+    @GetMapping("/activity")
+    public ResponseEntity<?> getActivity() {
+        return ResponseEntity.ok(adminDashboardService.getLatestActivity());
     }
 
     @GetMapping("/charts/response-time")

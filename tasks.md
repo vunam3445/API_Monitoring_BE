@@ -1,104 +1,39 @@
-# Task: Tích hợp API cho Revenue Analytics Dashboard
+# Kế Hoạch Thay Thế Mock Data - Dashboard
 
-## 1. API Tổng quan doanh thu (Stats)
-**Route:** `GET /api/admin/revenue/stats`  
-**Mô tả:** Trả về các chỉ số tài chính và trạng thái gói cước hiện tại.  
-**Đầu ra:**
-```json
-{
-  "totalRevenue": 1240000.0,
-  "revenueGrowth": 12.5,
-  "mrr": 98500.0,
-  "mrrGrowth": 8.2,
-  "activeSubscriptions": 3842,
-  "subsGrowth": 15.0,
-  "expiringSoon": 142,
-  "arpu": 27.9,
-  "ltv": 1450.0
-}
-```
+## Danh sách các hàm đang sử dụng Mock Data
 
-## 2. API Biểu đồ doanh thu (Charts)
-**Route:** `GET /api/admin/revenue/charts?period=last_30_days`  
-**Mô tả:** Trả về dữ liệu chuỗi thời gian để vẽ biểu đồ doanh thu.  
-**Đầu ra:**
-```json
-{
-  "labels": ["01 May", "02 May", ...],
-  "datasets": [
-    {
-      "label": "Revenue",
-      "data": [1200, 1500, 1100, ...]
-    }
-  ]
-}
-```
+### 1. `AdminDashboardServiceImpl.java`
+- **Hàm `getV2Stats()`**: Đang sử dụng các giá trị hardcode (mock) cho xu hướng (trend).
+  - *Current*: `trend("12%")` (Users), `trend("5%")` (Active Monitors), `trend("2%")` (Critical Issues), `trend("8%")` (Alerts).
+  - *Thay thế*: Đã tính toán số lượng của khoảng thời gian hiện tại so với khoảng thời gian trước đó (30 ngày qua so với 30 ngày trước cho Users, 7 ngày qua so với 7 ngày trước cho Monitors, và hôm nay so với hôm qua cho Alerts) để tính phần trăm xu hướng thực tế (`calculateGrowthStr()`). [ĐÃ HOÀN THÀNH]
+- **Hàm `getPerformance()`**: Đang có comment "Mock for now or derive from logs".
+  - *Current*: `double errorRate = 100.0 - uptimeStats.getUptimePercentage();` (Tính error rate một cách xấp xỉ).
+  - *Thay thế*: Đã query trực tiếp tỷ lệ lỗi từ database bằng query `getGlobalErrorRateStats` (số lượng check failed / tổng số check) trong `UptimeLogsRepository`. [ĐÃ HOÀN THÀNH]
+- **Hàm `getInfrastructure()`**: Trạng thái hàng đợi đang bị hardcode.
+  - *Current*: `.queueStatus(AdminInfrastructureResponse.QueueStatus.builder().label("Healthy").type("HEALTHY").build())`
+  - *Thay thế*: Đã lấy dữ liệu từ hệ thống RabbitMQ thực tế qua `amqpAdmin.getQueueInfo(MonitorMQConfig.QUEUE_NAME)` để set dynamic status: Healthy (0), Busy (<50), Overloaded (>=50). [ĐÃ HOÀN THÀNH]
 
-## 3. API Phân tích người dùng & Đăng ký (Analytics)
-**Route:** `GET /api/admin/revenue/subscription-analytics`  
-**Mô tả:** Trả về dữ liệu so sánh các nhóm người dùng và xu hướng.  
-**Đầu ra:**
-```json
-{
-  "usersComparison": {
-    "free": 12450,
-    "paid": 3520
-  },
-  "upgradeTrends": {
-    "count": 245,
-    "growth": 18.4
-  },
-  "churnMetrics": {
-    "rate": 2.1,
-    "status": "Good"
-  }
-}
-```
+### 2. `DashboardService.java`
+- **Hàm `getSummary()`**: Các thông số delta đang để là 0 (placeholder).
+  - *Current*: `totalMonitorsDelta(0)`, `currentlyDownDelta(0)`, `avgLatencyDeltaMs(0)` (với comment `// Placeholder`).
+  - *Thay thế*: Đã tính toán chính xác giá trị cho khoảng thời gian trước đó (24h trước) và tính độ lệch (delta) so với hiện tại sử dụng các query khoảng thời gian `countTotalByUserInRange`, `countUpByUserInRange`, `getAvgLatencyByUserInRange` và `countActiveAlertsAtTime`. [ĐÃ HOÀN THÀNH]
+- **Hàm `getPlanUsage()`**: Hardcode logic cho gói Free nếu không tìm thấy trong database.
+  - *Current*: Fallback tạo mới gói "Free" với giới hạn 5 monitors trong code.
+  - *Thay thế*: Đã loại bỏ đoạn code tạo fallback đối tượng ảo, thay vào đó throw `ResourceNotFoundException` nếu gói "Free" không tồn tại trong Database, đảm bảo chuẩn hóa dữ liệu. [ĐÃ HOÀN THÀNH]
 
-## 4. API Chi tiết hiệu quả gói cước (Plan Breakdown)
-**Route:** `GET /api/admin/revenue/plan-breakdown`  
-**Mô tả:** Thống kê chi tiết từng loại gói cước (thay thế cho quản lý subscription cũ).  
-**Đầu ra:**
-```json
-[
-  {
-    "id": "free",
-    "name": "Free Plan",
-    "activeSubscribers": 12450,
-    "monthlyRevenue": 0.0,
-    "churned30d": 452,
-    "retention": 92.0,
-    "growth": 0
-  },
-  {
-    "id": "pro",
-    "name": "Pro Plan",
-    "activeSubscribers": 3200,
-    "monthlyRevenue": 156800.0,
-    "churned30d": 12,
-    "retention": 99.2,
-    "growth": 14.5
-  }
-]
-```
+---
 
-## 5. API Danh sách giao dịch (Transactions)
-**Route:** `GET /api/admin/revenue/recent-transactions?page=0&size=10`  
-**Mô tả:** Lấy danh sách các giao dịch thanh toán mới nhất.  
-**Đầu ra:**
-```json
-{
-  "content": [
-    {
-      "id": "TXN-8821",
-      "userName": "Alex Rivera",
-      "userEmail": "alex@rivera.com",
-      "amount": 490.0,
-      "plan": "Pro Yearly",
-      "date": "2023-05-12T10:00:00Z",
-      "status": "SUCCESS"
-    }
-  ],
-  "totalElements": 1284
-}
-```
+## Kế hoạch thực thi (Implementation Plan)
+
+### [V] Bước 1: Khắc phục Mock Data trong `DashboardService.java`
+1. Cập nhật `getSummary()`: Tính toán lại các thông số `totalMonitors`, `currentlyDown`, và `avgLatency` cho 24h trước và tính toán delta chính xác. -> **Hoàn thành**
+2. Cập nhật `getPlanUsage()`: Loại bỏ đoạn code tạo fallback đối tượng. Thay vào đó, throw Exception hoặc trả về kết quả default lấy từ Database. -> **Hoàn thành**
+
+### [V] Bước 2: Khắc phục Mock Data trong `AdminDashboardServiceImpl.java`
+1. Cập nhật `getV2Stats()`: Thêm các queries vào Repositories để lấy thông số (User, Monitor, Alert) trong khoảng thời gian trước (vd: 24h trước). Tính `% growth`. -> **Hoàn thành**
+2. Cập nhật `getPerformance()`: Gọi API tính toán error rate từ `uptimeLogsRepository` thay vì tính ngược qua Uptime. -> **Hoàn thành**
+3. Cập nhật `getInfrastructure()`: Thích hợp với logic lấy số lượng Actuator hoặc Queue thật sự để set status. -> **Hoàn thành**
+
+### [V] Bước 3: Kiểm thử
+1. Chạy các bài test unit. -> **Hoàn thành (3/3 tests passed thành công!)**
+2. Khởi động ứng dụng, kiểm tra qua API để chắc chắn kết quả trả về là số liệu thực. -> **Hoàn thành**

@@ -1,37 +1,113 @@
 package com.example.demo.modules.system.services;
 
-import com.example.demo.modules.monitor.messaging.MonitorMQConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.listener.MessageListenerContainer;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
+import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import javax.sql.DataSource;
+import java.lang.management.ManagementFactory;
+import java.util.Properties;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AdminSystemServiceImpl implements IAdminSystemService {
 
-    private final AmqpAdmin amqpAdmin;
-    private final ISystemSettingService systemSettingService;
+    private final RabbitListenerEndpointRegistry rabbitListenerEndpointRegistry;
+    private final RabbitAdmin rabbitAdmin;
+    private final DataSource dataSource;
 
-    /**
-     * Xóa sạch hàng đợi các công việc monitor.
-     * Dùng trong trường hợp tràn hàng đợi hoặc lỗi hàng loạt.
-     */
+    @Value("${spring.rabbitmq.listener.simple.concurrency:20}")
+    private int workerConcurrency;
+
+    private boolean globalPaused = false;
+
+    @Override
     public void flushMonitorQueue() {
-        log.info("Purging monitor execution queue: {}", MonitorMQConfig.QUEUE_NAME);
-        amqpAdmin.purgeQueue(MonitorMQConfig.QUEUE_NAME, false);
+        try {
+            rabbitAdmin.purgeQueue("monitor.execution.queue", false);
+            log.info("Flushed monitor.execution.queue");
+        } catch (Exception e) {
+            log.warn("Failed to flush monitor queue", e);
+        }
     }
 
-    /**
-     * Tạm dừng hoặc tiếp tục việc giám sát toàn hệ thống.
-     */
+    @Override
     public void toggleGlobalPause(boolean paused) {
-        log.info("Setting global monitoring pause to: {}", paused);
-        systemSettingService.setGlobalPause(paused);
+        this.globalPaused = paused;
+        if (paused) {
+            rabbitListenerEndpointRegistry.stop();
+            log.info("Global execution paused (listeners stopped)");
+        } else {
+            rabbitListenerEndpointRegistry.start();
+            log.info("Global execution resumed (listeners started)");
+        }
     }
 
+    @Override
     public boolean isGlobalPaused() {
-        return systemSettingService.isGlobalPaused();
+        return this.globalPaused;
+    }
+
+    @Override
+    public int getActiveWorkerCount() {
+        int active = 0;
+        try {
+            for (MessageListenerContainer container : rabbitListenerEndpointRegistry.getListenerContainers()) {
+                if (container instanceof SimpleMessageListenerContainer) {
+                    active += ((SimpleMessageListenerContainer) container).getActiveConsumerCount();
+                } else {
+                    active += container.isRunning() ? 1 : 0;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get active worker count", e);
+        }
+        return active;
+    }
+
+    @Override
+    public int getTotalWorkerCount() {
+        return workerConcurrency;
+    }
+
+    @Override
+    public double getDbLoadPercent() {
+        try {
+            if (dataSource.isWrapperFor(HikariDataSource.class)) {
+                HikariDataSource hikari = dataSource.unwrap(HikariDataSource.class);
+                int total = hikari.getMaximumPoolSize();
+                int active = hikari.getHikariPoolMXBean() != null ? hikari.getHikariPoolMXBean().getActiveConnections() : 0;
+                return total > 0 ? (double) active / total * 100 : 0.0;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get DB load percentage", e);
+        }
+        return 0.0;
+    }
+
+    @Override
+    public long getServerUptimeMs() {
+        return ManagementFactory.getRuntimeMXBean().getUptime();
+    }
+
+    @Override
+    public int getQueueMessageCount() {
+        try {
+            Properties props = rabbitAdmin.getQueueProperties("monitor.execution.queue");
+            if (props != null && props.get("QUEUE_MESSAGE_COUNT") != null) {
+                Object count = props.get("QUEUE_MESSAGE_COUNT");
+                return (count instanceof Number) ? ((Number) count).intValue() : 0;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get queue message count", e);
+        }
+        return 0;
     }
 }

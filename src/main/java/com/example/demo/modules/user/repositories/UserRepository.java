@@ -8,12 +8,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
     @Override
@@ -37,5 +39,6 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
            "GROUP BY u.planType")
     List<Object[]> countUsersByPlan(UserRole excludeRole);
 
-    
+    @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt >= :since")
+    long countByCreatedAtAfter(@Param("since") LocalDateTime since);
 }

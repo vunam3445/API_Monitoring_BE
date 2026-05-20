@@ -38,6 +38,8 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
 
         long countByUserIdAndIsActive(UUID userId, boolean isActive);
 
+        long countByUserIdAndCreatedAtAfter(UUID userId, LocalDateTime since);
+
         @Query("SELECT COUNT(m), SUM(CASE WHEN m.isActive = true THEN 1 ELSE 0 END) " + // Thêm dấu cách ở cuối
                         "FROM Monitor m " + // Thêm dấu cách ở cuối
                         "WHERE m.userId = :userId")
@@ -59,4 +61,7 @@ public interface MonitorRepository extends JpaRepository<Monitor, UUID>, JpaSpec
 
         @Query("SELECT SUM(60.0 / m.checkInterval) FROM Monitor m WHERE m.isActive = true AND (m.isBlock = false OR m.isBlock IS NULL)")
         Double countActiveChecksPerMinute();
+
+        @Query("SELECT COUNT(m) FROM Monitor m WHERE m.createdAt >= :since")
+        long countByCreatedAtAfter(@Param("since") LocalDateTime since);
 }
