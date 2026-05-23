@@ -28,4 +28,25 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
            "WHERE s.status = :status " +
            "GROUP BY s.plan.id")
     List<Object[]> countAndSumByPlanAndStatus(@Param("status") SubscriptionStatus status);
+
+    @Query("SELECT s FROM Subscription s " +
+           "JOIN FETCH s.user " +
+           "JOIN FETCH s.plan " +
+           "WHERE s.status = :status " +
+           "AND s.currentPeriodEnd >= :startDate " +
+           "AND s.currentPeriodEnd <= :endDate " +
+           "AND s.plan.price > 0")
+    List<Subscription> findActivePaidSubscriptionsExpiringBetween(
+            @Param("status") SubscriptionStatus status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT s FROM Subscription s " +
+           "JOIN FETCH s.user " +
+           "WHERE s.status = :status " +
+           "AND s.currentPeriodEnd < :now " +
+           "AND s.plan.name <> 'FREE'")
+    List<Subscription> findActivePaidSubscriptionsExpiringBefore(
+            @Param("status") SubscriptionStatus status,
+            @Param("now") LocalDateTime now);
 }
