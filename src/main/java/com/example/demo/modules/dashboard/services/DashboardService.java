@@ -8,9 +8,11 @@ import com.example.demo.modules.monitor.enums.MonitorStatus;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.subscription.entities.Subscription;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
+import com.example.demo.modules.subscription.enums.SubscriptionStatus;
 import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
+import com.example.demo.common.exceptions.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,16 +54,19 @@ public class DashboardService implements IDashboardService {
         Double avgLatency = uptimeLogsRepository.getAvgLatencyByUser(userId, last24h);
         double avgLatencyMs = avgLatency != null ? avgLatency : 0.0;
 
-        // Previous 24h stats for trends
-        long totalChecksPrev = uptimeLogsRepository.countTotalByUser(userId, prev24h) - totalChecks;
-        long upChecksPrev = uptimeLogsRepository.countUpByUser(userId, prev24h) - upChecks;
+        // Previous 24h stats for trends using custom range queries
+        long totalChecksPrev = uptimeLogsRepository.countTotalByUserInRange(userId, prev24h, last24h);
+        long upChecksPrev = uptimeLogsRepository.countUpByUserInRange(userId, prev24h, last24h);
         double uptimePrev = totalChecksPrev > 0 ? (double) upChecksPrev * 100 / totalChecksPrev : 100.0;
         
-        // This is a bit tricky for avg latency since we need the avg of the specific range [prev24h, last24h]
-        // But for trends, a simple delta between two snapshots is usually what's meant.
-        // Let's just calculate the specific range for correctness if possible.
-        // For now, let's keep it simple.
+        Double avgLatencyPrevVal = uptimeLogsRepository.getAvgLatencyByUserInRange(userId, prev24h, last24h);
+        double avgLatencyPrev = avgLatencyPrevVal != null ? avgLatencyPrevVal : 0.0;
+
+        long totalMonitorsDelta = monitorRepository.countByUserIdAndCreatedAtAfter(userId, last24h);
         
+        long currentlyDownPrev = incidentRepository.countActiveAlertsAtTime(userId, last24h);
+        long currentlyDownDelta = currentlyDown - currentlyDownPrev;
+
         DashboardSummaryResponse response = DashboardSummaryResponse.builder()
                 .totalMonitors(totalMonitors)
                 .currentlyDown(currentlyDown)
@@ -69,10 +74,10 @@ public class DashboardService implements IDashboardService {
                 .avgLatencyMs(Math.round(avgLatencyMs * 10.0) / 10.0)
                 .comparisonWindow("previous_24h")
                 .trends(DashboardSummaryResponse.DashboardTrendTrends.builder()
-                        .totalMonitorsDelta(0) // Usually total monitors change slowly
-                        .currentlyDownDelta(0) 
+                        .totalMonitorsDelta(totalMonitorsDelta)
+                        .currentlyDownDelta(currentlyDownDelta) 
                         .uptime24hDelta(Math.round((uptime24h - uptimePrev) * 100.0) / 100.0)
-                        .avgLatencyDeltaMs(0) // Placeholder
+                        .avgLatencyDeltaMs(Math.round((avgLatencyMs - avgLatencyPrev) * 10.0) / 10.0)
                         .build())
                 .build();
 
@@ -253,7 +258,7 @@ public class DashboardService implements IDashboardService {
         Object cached = cacheService.get(key);
         if (cached instanceof PlanUsageResponse) return (PlanUsageResponse) cached;
 
-        Subscription sub = subscriptionRepository.findByUserId(userId).orElse(null);
+        Subscription sub = subscriptionRepository.findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE).orElse(null);
         SubscriptionPlan plan = null;
         if (sub != null) {
             plan = sub.getPlan();
@@ -262,14 +267,7 @@ public class DashboardService implements IDashboardService {
             plan = subscriptionPlanRepository.findAll().stream()
                     .filter(p -> "Free".equalsIgnoreCase(p.getName()))
                     .findFirst()
-                    .orElse(null);
-                    
-            if (plan == null) {
-                // Fallback hardcoded if DB is empty
-                plan = new SubscriptionPlan();
-                plan.setName("Free");
-                plan.setMaxMonitors(5);
-            }
+                    .orElseThrow(() -> new ResourceNotFoundException("Default 'Free' subscription plan not found in database. Please seed plan data."));
         }
 
         long used = monitorRepository.countByUserIdAndIsActive(userId, true);

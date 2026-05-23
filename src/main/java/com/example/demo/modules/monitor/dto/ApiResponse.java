@@ -40,4 +40,6 @@ public class ApiResponse {
 
     // Bạn có thể thêm trường tính toán uptime ở đây
     private Double uptimePercentage;
+    private String ownerName;
+    private Boolean isBlock;
 }

@@ -12,6 +12,7 @@ import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import com.example.demo.modules.uptimeLogs.repositories.UptimeLogsRepository;
 import com.example.demo.modules.alert.services.IIncidentService;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
+import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -49,10 +50,17 @@ public class MonitorWorker {
     private final UserSettingRepository userSettingRepository;
     private final com.example.demo.common.cache.ICacheService cacheService;
     private final IIncidentService incidentService;
+    private final DashboardCacheService dashboardCacheService;
+    private final com.example.demo.modules.system.services.ISystemSettingService systemSettingService;
 
     @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
-    @Transactional
     public void processMonitorJob(MonitorExecutionMessage message) {
+        // 0. Kiểm tra trạng thái Global Pause
+        if (systemSettingService.isGlobalPaused()) {
+            log.info("System is currently under GLOBAL PAUSE. Skipping job for monitor: {}", message.getMonitorId());
+            return;
+        }
+
         String monitorId = message.getMonitorId();
         log.info("Received execution job for monitor: {} (scheduled at: {})",
                 monitorId, message.getScheduledAt());
@@ -67,9 +75,9 @@ public class MonitorWorker {
 
             Monitor monitor = optionalMonitor.get();
 
-            // Kiểm tra monitor vẫn active (có thể bị tắt giữa lúc schedule và execute)
-            if (!Boolean.TRUE.equals(monitor.getIsActive())) {
-                log.info("Monitor {} is no longer active. Skipping.", monitorId);
+            // Kiểm tra monitor vẫn active và không bị khóa (có thể bị tắt giữa lúc schedule và execute)
+            if (!Boolean.TRUE.equals(monitor.getIsActive()) || Boolean.TRUE.equals(monitor.getIsBlock())) {
+                log.info("Monitor {} is no longer active or is blocked. Skipping.", monitorId);
                 return;
             }
 
@@ -114,50 +122,52 @@ public class MonitorWorker {
      * Cập nhật các trường trạng thái gần nhất trên Monitor.
      * Giúp dashboard hiển thị nhanh mà không cần query bảng uptime_logs.
      */
+    @Transactional
     private void updateMonitorStatus(Monitor monitor, UptimeLogs result,
             com.example.demo.modules.user.entities.UserSetting setting) {
         int defaultFailCount = (setting != null) ? setting.getDefaultFailCount() : 3;
 
-        // Cập nhật trạng thái gần nhất
-        if (!result.getIsUp()) {
-            // Chỉ đặt là "Down" nếu số lần lỗi liên tiếp vượt quá ngưỡng cấu hình
-            int currentFailures = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
-            if (currentFailures >= defaultFailCount) {
-                monitor.setLastStatus(MonitorStatus.DOWN);
-            } else {
-                // Đang lỗi nhưng chưa đủ số lần để confirm Down -> hiển thị cảnh báo Warning
-                // hoặc giữ nguyên
-                monitor.setLastStatus(MonitorStatus.WARNING);
-            }
-        } else if ("WARNING".equals(result.getAssertionStatus())) {
-            monitor.setLastStatus(MonitorStatus.WARNING);
-        } else {
-            monitor.setLastStatus(MonitorStatus.HEALTHY);
-        }
+        boolean isUnhealthy = !result.getIsUp() || "WARNING".equals(result.getAssertionStatus());
 
-        monitor.setLastLatencyMs(result.getResponseTimeMs());
-        monitor.setLastCheckAt(LocalDateTime.now());
-        monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
-
-        // Cập nhật consecutive failures
-        if (Boolean.TRUE.equals(result.getIsUp())) {
-            // Nếu trước đó đang fail mà giờ thành công -> RECOVERED
-            if (monitor.getConsecutiveFailures() != null && monitor.getConsecutiveFailures() > 0) {
-                result.setEventType(MonitorEventType.RECOVERED);
-            }
-            // Bao gồm cả Healthy và Warning đều tính là Up, reset số lần fail liên tiếp
-            monitor.setConsecutiveFailures(0);
-
-            // Trigger incident resolution check
-            incidentService.processCheckResult(monitor, result);
-        } else {
+        // 1. Xử lý khi lượt check bị Unhealthy (Sập hoặc Chậm)
+        if (isUnhealthy) {
             int current = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
             monitor.setConsecutiveFailures(current);
 
-            // CHỈ kích hoạt incident khi số lần lỗi liên tiếp vượt ngưỡng (Threshold)
+            // Thiết lập trạng thái hiển thị lastStatus gần nhất
+            if (!result.getIsUp()) {
+                if (current >= defaultFailCount) {
+                    monitor.setLastStatus(MonitorStatus.DOWN);
+                } else {
+                    monitor.setLastStatus(MonitorStatus.WARNING);
+                }
+            } else {
+                // Trường hợp slow response (isUp = true nhưng có warning)
+                monitor.setLastStatus(MonitorStatus.WARNING);
+            }
+
+            monitor.setLastLatencyMs(result.getResponseTimeMs());
+            monitor.setLastCheckAt(LocalDateTime.now());
+            monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
+
+            // CHỈ kích hoạt tạo Incident và Alert khi đã tích lũy đủ số lần lỗi liên tiếp
             if (current >= defaultFailCount) {
                 incidentService.processCheckResult(monitor, result);
             }
+        }
+        // 2. Xử lý khi lượt check hoàn toàn Healthy (API hoạt động tốt & tốc độ nhanh)
+        else {
+            if (monitor.getConsecutiveFailures() != null && monitor.getConsecutiveFailures() > 0) {
+                result.setEventType(MonitorEventType.RECOVERED);
+            }
+            monitor.setConsecutiveFailures(0);
+            monitor.setLastStatus(MonitorStatus.HEALTHY);
+            monitor.setLastLatencyMs(result.getResponseTimeMs());
+            monitor.setLastCheckAt(LocalDateTime.now());
+            monitor.setLastErrorMessage(null);
+
+            // Kích hoạt để tự động đóng các Incident đang mở (nếu có) và gửi thông báo khôi phục
+            incidentService.processCheckResult(monitor, result);
         }
 
         // Tính nextCheckAt dựa trên checkInterval
@@ -174,5 +184,7 @@ public class MonitorWorker {
         cacheService.evict("monitoring:key-health:" + monitor.getUserId());
         cacheService.evictByPrefix("monitoring:recent-events:" + monitor.getUserId());
         cacheService.evict("monitoring:overview:" + monitor.getId());
+        cacheService.evictByPrefix("admin:dashboard::"); // Xóa cache admin dashboard
+        dashboardCacheService.clearUserDashboardCache(monitor.getUserId());
     }
 }

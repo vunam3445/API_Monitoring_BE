@@ -51,13 +51,14 @@ public class VNPayService implements IPaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Gói đăng ký không tồn tại."));
 
         // 1. Tính toán giá tiền thực tế dựa trên đơn vị tiền tệ
-        double finalPrice = plan.getPrice();
+        BigDecimal finalPrice = plan.getPrice();
         if ("USD".equalsIgnoreCase(plan.getCurrency())) {
-            finalPrice = finalPrice * 25000; // Tạm tính 1 USD = 25,000 VND
+            finalPrice = finalPrice.multiply(BigDecimal.valueOf(25000)); // Tạm tính 1 USD = 25,000 VND
         }
 
-        // 2. VNPay yêu cầu số tiền nhân 100 (vnp_Amount tính theo đơn vị nhỏ nhất, VND không có xu nên là n * 100)
-        long amount = (long) (finalPrice * 100);
+        // 2. VNPay yêu cầu số tiền nhân 100 (vnp_Amount tính theo đơn vị nhỏ nhất, VND
+        // không có xu nên là n * 100)
+        long amount = finalPrice.multiply(BigDecimal.valueOf(100)).longValue();
 
         String vnp_TxnRef = vnPayConfig.getRandomNumber(8);
         String vnp_IpAddr = vnPayConfig.getIpAddress(servletRequest);
@@ -72,7 +73,7 @@ public class VNPayService implements IPaymentService {
         if (request.getBankCode() != null && !request.getBankCode().isEmpty()) {
             vnp_Params.put("vnp_BankCode", request.getBankCode());
         }
-        
+
         // Đưa planId và userId vào OrderInfo để hứng lại ở phần callback
         String orderInfo = "UserID:" + user.getId() + "_PlanID:" + plan.getId();
         vnp_Params.put("vnp_TxnRef", vnp_TxnRef);
@@ -121,17 +122,19 @@ public class VNPayService implements IPaymentService {
         String paymentUrl = vnPayConfig.getVnp_PayUrl() + "?" + queryUrl;
 
         // 3. Kiểm tra xem có giao dịch PENDING nào không để tái sử dụng, tránh rác DB
-        PaymentLogs paymentLog = paymentLogsRepository.findFirstByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), PaymentStatus.PENDING)
+        PaymentLogs paymentLog = paymentLogsRepository
+                .findFirstByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), PaymentStatus.PENDING)
                 .orElse(new PaymentLogs());
 
         paymentLog.setUser(user);
-        paymentLog.setAmount(BigDecimal.valueOf(plan.getPrice()));
+        paymentLog.setAmount(plan.getPrice());
         paymentLog.setPlanName(plan.getName());
         paymentLog.setStatus(PaymentStatus.PENDING);
         paymentLog.setTransactionId(vnp_TxnRef);
         paymentLog.setPaymentMethod("VNPAY");
         paymentLog.setCurrency("VND");
-        paymentLog.setSubscription(subscriptionRepository.findByUserId(user.getId()).orElse(null));
+        paymentLog.setSubscription(
+                subscriptionRepository.findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE).orElse(null));
 
         paymentLogsRepository.save(paymentLog);
 
@@ -182,7 +185,7 @@ public class VNPayService implements IPaymentService {
                 // Giao dịch thành công, phân tích OrderInfo để lấy UserID và PlanID
                 String orderInfo = requestParams.get("vnp_OrderInfo");
                 // orderInfo format: "UserID:UUID_PlanID:UUID"
-                
+
                 try {
                     String[] parts = orderInfo.split("_");
                     String userIdStr = parts[0].replace("UserID:", "");
@@ -202,18 +205,26 @@ public class VNPayService implements IPaymentService {
                     user.setPlanType(plan.getName());
 
                     // Cập nhật hoặc tạo Subscription mới
-                    Subscription subscription = subscriptionRepository.findByUserId(userId)
+                    Subscription subscription = subscriptionRepository
+                            .findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE)
                             .orElse(new Subscription());
 
                     subscription.setUser(user);
                     subscription.setPlan(plan);
                     subscription.setPlanName(plan.getName());
-                    subscription.setPlanPrice(BigDecimal.valueOf(plan.getPrice()));
+                    subscription.setPlanPrice(plan.getPrice());
                     subscription.setMaxMonitors(plan.getMaxMonitors());
                     subscription.setMinInterval(plan.getMinInterval());
                     subscription.setStartDate(LocalDateTime.now());
-                    subscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1));
-                    subscription.setBillingCycle(BillingCycle.MONTHLY);
+                    if (plan.getBillingCycle() == BillingCycle.MONTHLY) {
+                        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusMonths(1));
+                    } else if (plan.getBillingCycle() == BillingCycle.YEARLY) {
+                        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(1));
+                    } else if (plan.getBillingCycle() == BillingCycle.FREE) {
+                        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusYears(10));
+                    }
+
+                    subscription.setBillingCycle(plan.getBillingCycle());
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
                     subscription.setPaymentStatus(PaymentStatus.PAID);
 

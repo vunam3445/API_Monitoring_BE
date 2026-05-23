@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.dto.GoogleLoginRequest;
 import com.example.demo.modules.auth.dto.LoginRequest;
 import com.example.demo.modules.auth.dto.RegisterRequest;
 import com.example.demo.modules.auth.dto.LoginResponse;
+import com.example.demo.modules.auth.dto.ChangePasswordRequest;
 import com.example.demo.modules.subscription.entities.Subscription;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.entities.User;
@@ -22,6 +23,7 @@ import com.example.demo.modules.subscription.repositories.SubscriptionPlanReposi
 import com.example.demo.modules.user.enums.UserStatus;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
+import com.example.demo.common.cache.ICacheService;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -36,6 +38,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.UUID;
 
+
 @Service
 public class AuthService {
 
@@ -46,17 +49,23 @@ public class AuthService {
     private final JwtService jwtService;
     private final UserSettingRepository userSettingRepository;
     private final SubscriptionService subscriptionService;
+    private final ICacheService cacheService;
 
     @Value("${google.client-id}")
     private String googleClientId;
+    @Value("${default.avatar-url}")
+    private String defaultAvatarUrl;
 
+    @Value("${default.avatar-public-id}")
+    private String defaultAvatarPublicId;
     public AuthService(UserRepository userRepository,
-                       SubscriptionPlanRepository planRepository,
-                       SubscriptionRepository subscriptionRepository,
-                       BCryptPasswordEncoder passwordEncoder,
-                       UserSettingRepository userSettingRepository,
-                       SubscriptionService subscriptionService,
-                       JwtService jwtService) {
+            SubscriptionPlanRepository planRepository,
+            SubscriptionRepository subscriptionRepository,
+            BCryptPasswordEncoder passwordEncoder,
+            UserSettingRepository userSettingRepository,
+            SubscriptionService subscriptionService,
+            ICacheService cacheService,
+            JwtService jwtService) {
         this.userRepository = userRepository;
         this.planRepository = planRepository;
         this.subscriptionRepository = subscriptionRepository;
@@ -64,7 +73,9 @@ public class AuthService {
         this.jwtService = jwtService;
         this.userSettingRepository = userSettingRepository;
         this.subscriptionService = subscriptionService;
+        this.cacheService = cacheService;
     }
+
     @Transactional
     public User register(RegisterRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
@@ -80,13 +91,17 @@ public class AuthService {
         // Cập nhật theo DB mới: Sử dụng Enum
         user.setRole(UserRole.USER);
         user.setStatus(UserStatus.ACTIVE);
-        user.setAvatarUrl("https://res.cloudinary.com/dgcb0zg6s/image/upload/v1773922273/default-avatar_xooaz4.png");
-        user.setAvatarPublicId("default-avatar_xooaz4");
+        user.setAvatarUrl(defaultAvatarUrl);
+        user.setAvatarPublicId(defaultAvatarPublicId);
         user.setPlanType("FREE"); // Có thể gán từ hằng số cấu hình hệ thống
         user.setCreatedAt(LocalDateTime.now());
         createUserDefaultSettings(user);
         User savedUser = userRepository.save(user);
         createDefaultFreeSubscription(savedUser);
+
+        // Xóa cache danh sách để Admin thấy người dùng mới
+        evictUserCaches(null);
+
         return savedUser;
     }
 
@@ -137,14 +152,17 @@ public class AuthService {
             createUserDefaultSettings(user);
             User savedUser = userRepository.save(user);
             createDefaultFreeSubscription(savedUser);
+            evictUserCaches(null); // Xóa list cache
             return generateLoginResponse(savedUser);
         }
         User updatedUser = userRepository.save(user);
+        evictUserCaches(updatedUser.getId()); // Xóa cả list và object cache
         return generateLoginResponse(updatedUser);
     }
 
     /**
-     * Logic dùng chung để tạo Token, cập nhật thời gian đăng nhập và trả về Response
+     * Logic dùng chung để tạo Token, cập nhật thời gian đăng nhập và trả về
+     * Response
      */
     private LoginResponse generateLoginResponse(User user) {
         String accessToken = jwtService.generateToken(user);
@@ -181,7 +199,8 @@ public class AuthService {
             throw new ExpiredRefreshTokenException("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại");
         }
 
-        // Vẫn check status khi refresh token để đảm bảo nếu vừa bị khóa thì ko dùng tiếp được
+        // Vẫn check status khi refresh token để đảm bảo nếu vừa bị khóa thì ko dùng
+        // tiếp được
         if (user.getStatus() == UserStatus.SUSPENDED) {
             throw new AccountSuspendedException("Tài khoản đã bị khóa.");
         }
@@ -189,9 +208,33 @@ public class AuthService {
         return jwtService.generateToken(user);
     }
 
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy thông tin người dùng"));
+
+        if (request.getOldPassword().equals(request.getNewPassword())) {
+            throw new IllegalArgumentException("Mật khẩu mới không được trùng với mật khẩu cũ");
+        }
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Mật khẩu cũ không chính xác");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+
+        // Clear refresh token to force re-login on next token refresh for safety
+        user.setRefreshToken(null);
+        user.setRefreshTokenExpiry(null);
+
+        userRepository.save(user);
+        evictUserCaches(userId);
+    }
+
     private GoogleIdToken.Payload verifyGoogleToken(String idTokenString) {
         try {
-            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
+            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(),
+                    new GsonFactory())
                     .setAudience(Collections.singletonList(googleClientId))
                     .build();
 
@@ -226,5 +269,18 @@ public class AuthService {
         settings.setRetryAttempts(2);
 
         // Không gọi userSettingRepository.save(settings);
+    }
+
+    private void evictUserCaches(UUID userId) {
+        // 1. Xóa cache danh sách Admin
+        cacheService.evictByPrefix("api-monitoring:admin:users:list::");
+
+        // 2. Xóa cache danh sách User chung
+        cacheService.evictByPrefix("api-monitoring:api:list::user");
+
+        // 3. Xóa cache object cá nhân (nếu có userId)
+        if (userId != null) {
+            cacheService.evict("api-monitoring:api:object::user:" + userId);
+        }
     }
 }

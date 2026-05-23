@@ -26,6 +26,7 @@ public class PlanResponse implements Serializable {
     private String features;
 
     private Boolean isActive;
+    private String billingCycle;
     private Boolean isCurrentPlan; // Thêm trường này để đánh dấu gói hiện tại của User
 
     // Lưu ý: Chúng ta KHÔNG bao gồm trường isDelete ở đây

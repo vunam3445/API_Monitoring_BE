@@ -82,7 +82,9 @@ public class AlertDelivery {
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "latency_ms")
+    private Integer latencyMs;
 }

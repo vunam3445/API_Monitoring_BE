@@ -51,6 +51,15 @@ public class SubscriptionPlanService
     }
 
     @Override
+    protected void evictListCache() {
+        // 1. Xóa cache mặc định của BaseService
+        super.evictListCache();
+        // 2. Xóa các cache đặc thù của SubscriptionPlan
+        cacheService.evictByPrefix("api-monitoring:subscription-plans");
+        cacheService.evictByPrefix("api-monitoring:subscription-plans-all");
+    }
+
+    @Override
     @Cacheable(value = "api-monitoring:subscription-plans", key = "'user_status_' + #userId.toString()", unless = "#result == null")
     public List<PlanResponse> findAllWithUserStatus(UUID userId) {
         // 1. Lấy user để biết đang dùng gói nào
@@ -101,6 +110,22 @@ public class SubscriptionPlanService
                 null, false, 0, null, false, 0
         );
     }
+
+    @Override
+    @Cacheable(value = "api-monitoring:subscription-plans-all", unless = "#result == null")
+    public List<PlanResponse> findAllPlans() {
+        UUID currentPlanId = getCurrentUserPlanId();
+        return repository.findAll().stream().map(plan -> {
+            PlanResponse res = mapper.toResponse(plan);
+            if (currentPlanId != null) {
+                res.setIsCurrentPlan(plan.getId().equals(currentPlanId));
+            } else {
+                res.setIsCurrentPlan(false);
+            }
+            return res;
+        }).collect(Collectors.toList());
+    }
+
 
     private UUID getCurrentUserPlanId() {
         return securityContextService.getCurrentUser()

@@ -26,7 +26,10 @@ public class UserService
 
     // Định nghĩa ID mặc định để kiểm tra
     private static final String DEFAULT_AVATAR_PUBLIC_ID = "API_Monitoring/default/default-avatar_uftwz0";
-    public UserService(UserRepository repository, UserMapper mapper, ICacheService cacheService, CloudinaryService cloudinaryService) {
+    private static final String CACHE_ADMIN_USERS = "api-monitoring:admin:users:list";
+
+    public UserService(UserRepository repository, UserMapper mapper, ICacheService cacheService,
+            CloudinaryService cloudinaryService) {
         super(repository, mapper, cacheService);
         this.cloudinaryService = cloudinaryService;
     }
@@ -37,11 +40,11 @@ public class UserService
     }
 
     @Override
-    public UserResponse update(UUID id,UpdateUserRequest request) {
+    public UserResponse update(UUID id, UpdateUserRequest request) {
 
         if (!id.equals(request.getId())) {
             throw new ForbidenException("Bạn không có quyền cập nhật thông tin của người dùng này!");
-        }        // 1. Tìm user hiện tại trong DB
+        } // 1. Tìm user hiện tại trong DB
         User user = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -51,7 +54,8 @@ public class UserService
 
                 // Trong Service, hãy tách việc xóa ra một Thread khác hoặc dùng @Async
                 CompletableFuture.runAsync(() -> {
-                    if (user.getAvatarPublicId() != null && !user.getAvatarPublicId().equals(DEFAULT_AVATAR_PUBLIC_ID)) {
+                    if (user.getAvatarPublicId() != null
+                            && !user.getAvatarPublicId().equals(DEFAULT_AVATAR_PUBLIC_ID)) {
                         try {
                             cloudinaryService.delete(user.getAvatarPublicId());
                         } catch (IOException e) {
@@ -60,7 +64,7 @@ public class UserService
                     }
                 });
 
-// Tiếp tục thực hiện upload ảnh mới ngay lập tức
+                // Tiếp tục thực hiện upload ảnh mới ngay lập tức
                 Map uploadResult = cloudinaryService.upload(request.getAvatarFile(), "API_Monitoring/avatars");
                 // Cập nhật thông tin ảnh mới vào entity
                 user.setAvatarUrl(uploadResult.get("secure_url").toString());
@@ -78,6 +82,9 @@ public class UserService
         User updatedUser = repository.save(user);
         evictObjectCache(id);
         evictListCache();
+        // Xóa thêm cache của admin vì thông tin user trong list admin cũng cần cập nhật
+        cacheService.evictByPrefix(CACHE_ADMIN_USERS + "::");
+
         return mapper.toResponse(updatedUser);
     }
 }

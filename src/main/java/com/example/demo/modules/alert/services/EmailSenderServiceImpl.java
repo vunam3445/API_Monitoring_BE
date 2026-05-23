@@ -47,6 +47,51 @@ public class EmailSenderServiceImpl implements EmailSenderService {
         sendHtmlEmail(recipient, "Test Notification", "<h1>Test</h1><p>Your API Monitoring alert system is working.</p>");
     }
 
+    @Override
+    public void sendSubscriptionExpiryEmail(String recipient, String userName, String planName, String expiryDate) {
+        String subject = String.format("[API Monitoring] Gia hạn gói dịch vụ %s sắp hết hạn", planName);
+        String content = buildSubscriptionExpiryHtmlContent(userName, planName, expiryDate);
+        sendHtmlEmail(recipient, subject, content);
+    }
+
+    private String buildSubscriptionExpiryHtmlContent(String userName, String planName, String expiryDate) {
+        return String.format(
+            "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 40px 10px; color: #1e293b;\">" +
+            "    <div style=\"max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1); border: 1px solid #e2e8f0;\">" +
+            "        <div style=\"background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%); padding: 35px 20px; text-align: center;\">" +
+            "            <h1 style=\"color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px;\">API Monitoring</h1>" +
+            "            <p style=\"color: #e0e7ff; margin: 5px 0 0 0; font-size: 14px;\">Hệ thống giám sát hiệu năng API thông minh</p>" +
+            "        </div>" +
+            "        <div style=\"padding: 40px 30px;\">" +
+            "            <h2 style=\"color: #0f172a; margin-top: 0; font-size: 20px; font-weight: 700;\">Xin chào, %s!</h2>" +
+            "            <p style=\"font-size: 15px; line-height: 1.6; color: #475569;\">" +
+            "                Chúng tôi xin thông báo gói dịch vụ trả phí <strong>%s</strong> của bạn trên hệ thống <strong>API Monitoring</strong> sẽ hết hạn vào ngày <span style=\"color: #ef4444; font-weight: 700;\">%s</span> (3 ngày nữa)." +
+            "            </p>" +
+            "            <div style=\"background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 20px; border-radius: 8px; margin: 25px 0;\">" +
+            "                <h4 style=\"color: #b45309; margin: 0 0 8px 0; font-size: 15px; font-weight: 700;\">⚠️ Lưu ý quan trọng</h4>" +
+            "                <p style=\"margin: 0; font-size: 14px; line-height: 1.5; color: #78350f;\">" +
+            "                    Sau ngày hết hạn, tài khoản của bạn sẽ tự động chuyển về gói <strong>FREE</strong>. Các giới hạn như số lượng API giám sát, thời gian chu kỳ quét sẽ bị thu hẹp đáng kể, gây gián đoạn việc giám sát hệ thống của bạn." +
+            "                </p>" +
+            "            </div>" +
+            "            <p style=\"font-size: 15px; line-height: 1.6; color: #475569; text-align: center; margin-top: 30px;\">" +
+            "                Hãy gia hạn hoặc nâng cấp ngay hôm nay để duy trì kết nối giám sát 24/7 không bị ngắt quãng!" +
+            "            </p>" +
+            "            <div style=\"text-align: center; margin: 35px 0;\">" +
+            "                <a href=\"http://localhost:3000/admin/billing\" style=\"background-color: #4f46e5; color: #ffffff; text-decoration: none; padding: 14px 35px; border-radius: 8px; font-weight: bold; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);\">" +
+            "                    Gia Hạn Gói Ngay" +
+            "                </a>" +
+            "            </div>" +
+            "        </div>" +
+            "        <div style=\"background-color: #f1f5f9; padding: 25px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;\">" +
+            "            <p style=\"margin: 0 0 5px 0;\">Đây là email tự động từ hệ thống API Monitoring, vui lòng không trả lời trực tiếp email này.</p>" +
+            "            <p style=\"margin: 0;\">&copy; 2026 API Monitoring Team. All rights reserved.</p>" +
+            "        </div>" +
+            "    </div>" +
+            "</div>",
+            userName, planName, expiryDate
+        );
+    }
+
     private void sendHtmlEmail(String to, String subject, String htmlContent) {
         log.info("Sending email FROM {} TO {}", fromEmail, to);
         try {

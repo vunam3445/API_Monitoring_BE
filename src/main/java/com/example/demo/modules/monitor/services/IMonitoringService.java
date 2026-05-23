@@ -10,18 +10,23 @@ import java.util.UUID;
 
 public interface IMonitoringService {
     MonitoringSummaryResponse getSummary(UUID userId);
+
     List<MonitoringChartPoint> getCharts(UUID userId, UUID monitorId, String range);
+
     List<KeyHealthResponse> getKeyHealth(UUID userId);
- 
+
     List<MonitoringEventResponse> getRecentEvents(UUID userId, int limit);
- 
-    Page<MonitorLogRow> getMonitorLogs(UUID userId, UUID monitorId, MonitorStatus status, MonitorEventType eventType, Pageable pageable);
- 
+
+    Page<MonitorLogRow> getMonitorLogs(UUID userId, UUID monitorId, MonitorStatus status, MonitorEventType eventType,
+            Pageable pageable);
+
     MonitorOverviewResponse getMonitorOverview(UUID userId, UUID monitorId);
- 
+
     MonitorTrendResponse getMonitorTrend(UUID userId, UUID monitorId, String range);
- 
+
     MonitorUptimeResponse getMonitorUptimeStats(UUID userId, UUID monitorId, String range);
- 
+
     MonitoringSearchResponse search(UUID userId, String keyword);
+
+    AdminUserMonitorStatsDto getMonitorStats(UUID userId);
 }

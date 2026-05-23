@@ -3,6 +3,7 @@ package com.example.demo.modules.subscription.dto;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 @Data
@@ -29,4 +30,7 @@ public class CreatePlanRequest {
     private String features; // Chuỗi JSON
 
     private Boolean isActive = true;
+    @NotBlank(message = "Chu kỳ thanh toán không được để trống")
+    @Pattern(regexp = "^(MONTHLY|YEARLY)$", message = "Chu kỳ thanh toán phải là MONTHLY hoặc YEARLY")
+    private String billingCycle;
 }

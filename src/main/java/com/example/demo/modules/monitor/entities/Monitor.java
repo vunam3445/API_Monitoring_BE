@@ -49,6 +49,10 @@ public class Monitor {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", insertable = false, updatable = false)
+    private com.example.demo.modules.user.entities.User user;
+
     /**
      * Tên monitor do người dùng đặt.
      * Ví dụ: "Google API", "Auth Service Production"
@@ -210,4 +214,10 @@ public class Monitor {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+    /**
+     * monitor cho bị chặn do admin không
+     * **/
+    @Builder.Default
+    @Column(name = "is_block")
+    private Boolean isBlock = false;
 }

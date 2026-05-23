@@ -18,11 +18,11 @@ import java.util.UUID;
 
 @Repository
 public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSpecificationExecutor<Incident> {
-    
+
     // Tìm incident active theo monitor + type để gộp incident TRÁNH TRÙNG
     @Query("SELECT i FROM Incident i WHERE i.monitor.id = :monitorId AND i.type = :type AND i.status IN :statusList")
-    Optional<Incident> findActiveIncident(@Param("monitorId") UUID monitorId, 
-                                          @Param("type") IncidentType type, 
+    Optional<Incident> findActiveIncident(@Param("monitorId") UUID monitorId,
+                                          @Param("type") IncidentType type,
                                           @Param("statusList") Collection<IncidentStatus> statusList);
 
     /**
@@ -45,4 +45,21 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.status = com.example.demo.modules.alert.enums.IncidentStatus.RESOLVED AND i.triggeredAt >= :since")
     long countResolvedAlerts(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.triggeredAt >= :start AND i.triggeredAt <= :end")
+    long countIncidentInDateRange(@Param("userId") UUID userId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    long countByTriggeredAtAfter(LocalDateTime time);
+
+    @Query("SELECT COUNT(i) FROM Incident i WHERE i.monitor.userId = :userId AND i.triggeredAt <= :time AND (i.resolvedAt IS NULL OR i.resolvedAt > :time)")
+    long countActiveAlertsAtTime(@Param("userId") UUID userId, @Param("time") LocalDateTime time);
+
+    @Query(value = "SELECT i.monitor_id AS monitorId, " +
+            "COUNT(i.id) AS incidentCount, " +
+            "SUM(EXTRACT(EPOCH FROM (COALESCE(i.resolved_at, CURRENT_TIMESTAMP) - i.triggered_at)) / 60) AS downtimeMinutes " +
+            "FROM incidents i " +
+            "JOIN monitors m ON i.monitor_id = m.id " +
+            "WHERE m.user_id = :userId AND i.triggered_at >= :since " +
+            "GROUP BY i.monitor_id", nativeQuery = true)
+    List<Object[]> getIncidentStats(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
 }

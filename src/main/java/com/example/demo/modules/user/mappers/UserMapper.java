@@ -3,9 +3,12 @@ package com.example.demo.modules.user.mappers;
 import com.example.demo.common.base.BaseMapper;
 import com.example.demo.modules.auth.dto.RegisterRequest;
 import com.example.demo.modules.user.dto.UpdateUserRequest;
+import com.example.demo.modules.user.dto.UserAdminResponse;
 import com.example.demo.modules.user.dto.UserResponse;
 import com.example.demo.modules.user.entities.User;
 import org.mapstruct.*;
+
+import java.util.List;
 
 @Mapper(componentModel = "spring",
         nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
@@ -19,6 +22,10 @@ public interface UserMapper extends BaseMapper<User, RegisterRequest, UpdateUser
 
     @Override
     UserResponse toResponse(User entity);
+
+    UserAdminResponse toUserAdminResponse(User entity);
+
+    List<UserAdminResponse> toUserAdminResponseList(List<User> entities);
 
     @Override
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)

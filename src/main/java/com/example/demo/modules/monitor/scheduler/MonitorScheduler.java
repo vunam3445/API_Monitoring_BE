@@ -31,6 +31,7 @@ public class MonitorScheduler {
     private final MonitorRepository monitorRepository;
     private final DistributedLockService lockService;
     private final MonitorProducer monitorProducer;
+    private final com.example.demo.modules.system.services.ISystemSettingService systemSettingService;
 
     /**
      * Lock TTL = 120 giây.
@@ -45,6 +46,11 @@ public class MonitorScheduler {
      */
     @Scheduled(fixedDelay = 30000)
     public void scanDueMonitors() {
+        if (systemSettingService.isGlobalPaused()) {
+            log.info("System is under GLOBAL PAUSE. Skipping scheduler scan.");
+            return;
+        }
+
         LocalDateTime now = LocalDateTime.now();
         List<Monitor> dueMonitors = monitorRepository.findDueMonitors(now);
 
@@ -56,6 +62,10 @@ public class MonitorScheduler {
         log.info("Found {} monitors due for checking", dueMonitors.size());
 
         for (Monitor monitor : dueMonitors) {
+            if (!Boolean.TRUE.equals(monitor.getIsActive()) || Boolean.TRUE.equals(monitor.getIsBlock())) {
+                continue;
+            }
+
             String monitorId = monitor.getId().toString();
 
             // Thử claim lock: chỉ 1 instance được xử lý monitor này

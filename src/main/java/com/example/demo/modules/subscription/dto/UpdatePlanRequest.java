@@ -24,5 +24,6 @@ public class UpdatePlanRequest {
 
     private String features; // Chuỗi JSON
 
+    private String billingCycle;
     private Boolean isActive;
 }

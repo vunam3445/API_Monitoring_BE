@@ -7,6 +7,7 @@ import com.example.demo.modules.alert.repositories.IncidentRepository;
 import com.example.demo.modules.monitor.entities.Monitor;
 import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
+import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class IncidentService implements IIncidentService {
     private final ICacheService cacheService;
     private final AlertNotificationDispatcher notificationDispatcher;
     private final UserSettingRepository userSettingRepository;
+    private final DashboardCacheService dashboardCacheService;
 
     @Override
     @Transactional
@@ -117,6 +119,12 @@ public class IncidentService implements IIncidentService {
      * Tránh gửi liên tục mỗi 1-2 phút (Alert Fatigue).
      */
     private boolean shouldNotify(Incident incident, boolean isNew) {
+        // 0. Kiểm tra nếu monitor đang bị Mute (tắt tiếng)
+        if (Boolean.TRUE.equals(incident.getMonitor().getIsMuted())) {
+            log.info("shouldNotify: false (Monitor is MUTED)");
+            return false;
+        }
+
         if (isNew) {
             log.info("shouldNotify: true (New Incident)");
             return true;
@@ -254,5 +262,6 @@ public class IncidentService implements IIncidentService {
         if (incidentId != null) {
             cacheService.evict("alerts:detail::" + incidentId);
         }
+        dashboardCacheService.clearUserDashboardCache(userId);
     }
 }
