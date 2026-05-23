@@ -5,9 +5,8 @@
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
     <!--
-        RabbitMQ Appender: Thu thập log WARN/ERROR/FATAL của package com.example.demo
+        RabbitMQ Appender: Thu thập log WARN/ERROR/FATAL của HỆ THỐNG
         và đẩy bất đồng bộ vào queue "system.logs.queue".
-        Đây là log lỗi nội bộ của HỆ THỐNG, KHÔNG phải log giám sát API của người dùng.
     -->
     <appender name="RABBIT_SYSTEM_LOG" class="com.example.demo.common.logging.RabbitMqLogAppender">
         <host>localhost</host>
@@ -15,20 +14,15 @@
         <username>guest</username>
         <password>guest</password>
         <queueName>system.logs.queue</queueName>
+        <!-- Chỉ ghi nhận log từ cấp độ WARN trở lên -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>WARN</level>
+        </filter>
     </appender>
 
-    <!-- Root logger: chỉ xuất ra Console (không ghi DB) -->
+    <!-- Root logger: Bắt tất cả log INFO trở lên của toàn hệ thống -->
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-    </root>
-
-    <!--
-        Logger riêng cho package nội bộ com.example.demo:
-        - Level WARN trở lên sẽ được đẩy vào RabbitMQ → ghi Database.
-        - additivity="false": tắt kế thừa từ root logger để tránh log bị in 2 lần.
-    -->
-    <logger name="com.example.demo" level="WARN" additivity="false">
-        <appender-ref ref="CONSOLE"/>
         <appender-ref ref="RABBIT_SYSTEM_LOG"/>
-    </logger>
+    </root>
 </configuration>

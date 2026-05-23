@@ -56,4 +56,29 @@ public class ApplicationLogController {
             @RequestParam(defaultValue = "30") int retentionDays) {
         return ResponseEntity.ok(applicationLogService.clearOldLogs(retentionDays));
     }
+
+    /**
+     * API 4: [Endpoint Kiểm thử] Sinh log thử nghiệm để kiểm tra luồng RabbitMQ và DB.
+     * GET /api/v1/admin/system-logs/test-generate
+     */
+    @GetMapping("/test-generate")
+    public ResponseEntity<String> testGenerateLogs() {
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ApplicationLogController.class);
+
+        // 1. Log nội bộ của com.example.demo
+        log.warn("TEST INTERNAL WARNING: Đây là log cảnh báo giả lập của com.example.demo");
+        log.error("TEST INTERNAL ERROR: Đây là log lỗi giả lập của com.example.demo", 
+                new RuntimeException("Simulated internal error exception"));
+
+        // 2. Log giả lập từ package bên ngoài (ví dụ Spring Data Redis)
+        org.slf4j.Logger redisLogger = org.slf4j.LoggerFactory.getLogger("org.springframework.data.redis.RedisConnectionFailureException");
+        redisLogger.warn("TEST EXTERNAL WARNING: Giả lập lỗi Redis server không phản hồi!");
+        redisLogger.error("TEST EXTERNAL ERROR: Giả lập lỗi Redis connection pool bị cạn kiệt!");
+
+        // 3. Log giả lập từ RabbitMQ (Cần bị LOẠI TRỪ để tránh vòng lặp đệ quy vô hạn)
+        org.slf4j.Logger rabbitLogger = org.slf4j.LoggerFactory.getLogger("org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer");
+        rabbitLogger.error("TEST RABBIT ERROR: Giả lập lỗi kết nối RabbitMQ (Log này tuyệt đối không được ghi vào DB!)");
+
+        return ResponseEntity.ok("Simulated logs generated successfully! Hãy gọi lại API lấy danh sách để kiểm tra kết quả.");
+    }
 }

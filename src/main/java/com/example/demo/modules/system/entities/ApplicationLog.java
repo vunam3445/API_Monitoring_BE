@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
  * Entity lưu trữ log lỗi của chính ứng dụng Backend (Application/System Logs).
@@ -24,8 +23,8 @@ import java.util.UUID;
 public class ApplicationLog {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "timestamp", nullable = false)
     private LocalDateTime timestamp;

@@ -64,8 +64,16 @@ public class RabbitMqLogAppender extends AppenderBase<ILoggingEvent> {
 
     @Override
     protected void append(ILoggingEvent event) {
-        // Chỉ xử lý log thuộc package nội bộ của dự án
-        if (event.getLoggerName() == null || !event.getLoggerName().startsWith("com.example.demo")) {
+        String loggerName = event.getLoggerName();
+        if (loggerName == null) {
+            return;
+        }
+
+        // Loại trừ tuyệt đối các log liên quan đến RabbitMQ để tránh vòng lặp vô hạn (Infinite Loop)
+        // khi chính RabbitMQ bị mất kết nối hoặc chập chờn.
+        if (loggerName.startsWith("org.springframework.amqp") || 
+            loggerName.startsWith("org.springframework.rabbit") || 
+            loggerName.startsWith("com.rabbitmq.client")) {
             return;
         }
 

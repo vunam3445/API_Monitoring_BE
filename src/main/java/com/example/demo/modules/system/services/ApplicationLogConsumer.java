@@ -3,7 +3,7 @@ package com.example.demo.modules.system.services;
 import com.example.demo.modules.system.entities.ApplicationLog;
 import com.example.demo.modules.system.repositories.ApplicationLogRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
@@ -17,17 +17,23 @@ import java.util.Map;
  * giải mã JSON và lưu vào bảng application_logs trong Database.
  *
  * Message được đẩy vào queue bởi RabbitMqLogAppender (Logback Custom Appender).
+ * ObjectMapper được khởi tạo trực tiếp (không inject qua Spring) để tránh
+ * lỗi bean not found và circular dependency khi khởi động.
  */
 @Service
-@RequiredArgsConstructor
 public class ApplicationLogConsumer {
 
     private final ApplicationLogRepository applicationLogRepository;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public ApplicationLogConsumer(ApplicationLogRepository applicationLogRepository) {
+        this.applicationLogRepository = applicationLogRepository;
+    }
 
     @RabbitListener(queues = "system.logs.queue")
-    public void consumeApplicationLog(byte[] messageBytes) {
+    public void consumeApplicationLog(Message message) {
         try {
+            byte[] messageBytes = message.getBody();
             @SuppressWarnings("unchecked")
             Map<String, Object> logMap = objectMapper.readValue(messageBytes, Map.class);
 

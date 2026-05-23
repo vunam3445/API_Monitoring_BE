@@ -9,7 +9,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
  * Repository cho ApplicationLog - log lỗi nội bộ của ứng dụng Backend.
@@ -17,7 +16,7 @@ import java.util.UUID;
  */
 @Repository
 public interface ApplicationLogRepository
-        extends JpaRepository<ApplicationLog, UUID>, JpaSpecificationExecutor<ApplicationLog> {
+        extends JpaRepository<ApplicationLog, Long>, JpaSpecificationExecutor<ApplicationLog> {
 
     @Modifying
     @Query("DELETE FROM ApplicationLog a WHERE a.timestamp < :thresholdTime")
