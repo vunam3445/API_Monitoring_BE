@@ -1,6 +1,7 @@
 package com.example.demo.modules.system.controllers;
 
 import com.example.demo.modules.system.services.IAdminSystemService;
+import com.example.demo.modules.dashboard.dto.AdminCardStatsResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,11 @@ public class AdminDashboardController {
     @GetMapping("/stats")
     public ResponseEntity<?> getStats(@RequestParam(defaultValue = "1d") String range) {
         return ResponseEntity.ok(adminDashboardService.getV2Stats(range));
+    }
+
+    @GetMapping("/stats-cards")
+    public ResponseEntity<AdminCardStatsResponse> getStatsCards() {
+        return ResponseEntity.ok(adminDashboardService.getCardStats());
     }
 
     @GetMapping("/performance")

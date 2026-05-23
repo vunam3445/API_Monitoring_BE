@@ -20,4 +20,6 @@ public interface IAdminDashboardService {
     UptimeGaugeResponse getGlobalUptime(String range);
 
     MethodDistributionResponse getGlobalMethodDistribution(String range);
+
+    AdminCardStatsResponse getCardStats();
 }

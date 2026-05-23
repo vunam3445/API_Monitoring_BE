@@ -127,46 +127,47 @@ public class MonitorWorker {
             com.example.demo.modules.user.entities.UserSetting setting) {
         int defaultFailCount = (setting != null) ? setting.getDefaultFailCount() : 3;
 
-        // Cập nhật trạng thái gần nhất
-        if (!result.getIsUp()) {
-            // Chỉ đặt là "Down" nếu số lần lỗi liên tiếp vượt quá ngưỡng cấu hình
-            int currentFailures = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
-            if (currentFailures >= defaultFailCount) {
-                monitor.setLastStatus(MonitorStatus.DOWN);
-            } else {
-                // Đang lỗi nhưng chưa đủ số lần để confirm Down -> hiển thị cảnh báo Warning
-                // hoặc giữ nguyên
-                monitor.setLastStatus(MonitorStatus.WARNING);
-            }
-        } else if ("WARNING".equals(result.getAssertionStatus())) {
-            monitor.setLastStatus(MonitorStatus.WARNING);
-        } else {
-            monitor.setLastStatus(MonitorStatus.HEALTHY);
-        }
+        boolean isUnhealthy = !result.getIsUp() || "WARNING".equals(result.getAssertionStatus());
 
-        monitor.setLastLatencyMs(result.getResponseTimeMs());
-        monitor.setLastCheckAt(LocalDateTime.now());
-        monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
-
-        // Cập nhật consecutive failures
-        if (Boolean.TRUE.equals(result.getIsUp())) {
-            // Nếu trước đó đang fail mà giờ thành công -> RECOVERED
-            if (monitor.getConsecutiveFailures() != null && monitor.getConsecutiveFailures() > 0) {
-                result.setEventType(MonitorEventType.RECOVERED);
-            }
-            // Bao gồm cả Healthy và Warning đều tính là Up, reset số lần fail liên tiếp
-            monitor.setConsecutiveFailures(0);
-
-            // Trigger incident resolution check
-            incidentService.processCheckResult(monitor, result);
-        } else {
+        // 1. Xử lý khi lượt check bị Unhealthy (Sập hoặc Chậm)
+        if (isUnhealthy) {
             int current = (monitor.getConsecutiveFailures() != null ? monitor.getConsecutiveFailures() : 0) + 1;
             monitor.setConsecutiveFailures(current);
 
-            // CHỈ kích hoạt incident khi số lần lỗi liên tiếp vượt ngưỡng (Threshold)
+            // Thiết lập trạng thái hiển thị lastStatus gần nhất
+            if (!result.getIsUp()) {
+                if (current >= defaultFailCount) {
+                    monitor.setLastStatus(MonitorStatus.DOWN);
+                } else {
+                    monitor.setLastStatus(MonitorStatus.WARNING);
+                }
+            } else {
+                // Trường hợp slow response (isUp = true nhưng có warning)
+                monitor.setLastStatus(MonitorStatus.WARNING);
+            }
+
+            monitor.setLastLatencyMs(result.getResponseTimeMs());
+            monitor.setLastCheckAt(LocalDateTime.now());
+            monitor.setLastErrorMessage(result.getIsUp() ? null : result.getErrorMessage());
+
+            // CHỈ kích hoạt tạo Incident và Alert khi đã tích lũy đủ số lần lỗi liên tiếp
             if (current >= defaultFailCount) {
                 incidentService.processCheckResult(monitor, result);
             }
+        }
+        // 2. Xử lý khi lượt check hoàn toàn Healthy (API hoạt động tốt & tốc độ nhanh)
+        else {
+            if (monitor.getConsecutiveFailures() != null && monitor.getConsecutiveFailures() > 0) {
+                result.setEventType(MonitorEventType.RECOVERED);
+            }
+            monitor.setConsecutiveFailures(0);
+            monitor.setLastStatus(MonitorStatus.HEALTHY);
+            monitor.setLastLatencyMs(result.getResponseTimeMs());
+            monitor.setLastCheckAt(LocalDateTime.now());
+            monitor.setLastErrorMessage(null);
+
+            // Kích hoạt để tự động đóng các Incident đang mở (nếu có) và gửi thông báo khôi phục
+            incidentService.processCheckResult(monitor, result);
         }
 
         // Tính nextCheckAt dựa trên checkInterval

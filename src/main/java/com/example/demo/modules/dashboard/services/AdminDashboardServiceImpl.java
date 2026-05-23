@@ -108,6 +108,96 @@ public class AdminDashboardServiceImpl implements IAdminDashboardService {
     }
 
     @Override
+    @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:stats-cards'")
+    public AdminCardStatsResponse getCardStats() {
+        // 1. Revenue
+        var revStats = revenueService.getRevenueStats();
+        BigDecimal mrr = revStats.getMrr();
+        Double mrrGrowth = revStats.getMrrGrowth();
+        
+        String revenueValue = "$" + (mrr != null ? mrr.setScale(0, java.math.RoundingMode.HALF_UP).toString() : "0");
+        String revenueTrendStr = mrrGrowth != null ? String.format("%+.1f%%", mrrGrowth) : "0%";
+        boolean revenueTrendUp = mrrGrowth == null || mrrGrowth >= 0;
+
+        var revenueStat = AdminCardStatsResponse.StatItem.builder()
+                .value(revenueValue)
+                .subValue("Monthly Recurring Revenue")
+                .trend(revenueTrendStr)
+                .trendUp(revenueTrendUp)
+                .build();
+
+        // 2. Total Users
+        long totalUsersCount = userRepository.count();
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime sixtyDaysAgo = LocalDateTime.now().minusDays(60);
+        
+        long newUsers = userRepository.countByCreatedAtAfter(thirtyDaysAgo);
+        long prevNewUsers = userRepository.countByCreatedAtAfter(sixtyDaysAgo) - newUsers;
+        
+        String usersTrendStr = calculateGrowthStr(newUsers, prevNewUsers);
+        boolean usersTrendUp = newUsers >= prevNewUsers;
+
+        var usersStat = AdminCardStatsResponse.StatItem.builder()
+                .value(String.valueOf(totalUsersCount))
+                .subValue("Total Registered")
+                .trend(usersTrendStr)
+                .trendUp(usersTrendUp)
+                .build();
+
+        // 3. APIs Monitored
+        long totalApis = monitorRepository.count();
+        long newApis = monitorRepository.countByCreatedAtAfter(thirtyDaysAgo);
+        long prevNewApis = monitorRepository.countByCreatedAtAfter(sixtyDaysAgo) - newApis;
+        
+        String apiTrendStr = calculateGrowthStr(newApis, prevNewApis);
+        boolean apiTrendUp = newApis >= prevNewApis;
+
+        var apisMonitoredStat = AdminCardStatsResponse.StatItem.builder()
+                .value(String.valueOf(totalApis))
+                .subValue("Active Monitors")
+                .trend(apiTrendStr)
+                .trendUp(apiTrendUp)
+                .build();
+
+        // 4. APIs Down
+        long downApis = monitorRepository.countByLastStatus(com.example.demo.modules.monitor.enums.MonitorStatus.DOWN);
+        String downTrendStr = downApis == 0 ? "Stable" : String.valueOf(downApis);
+        boolean downTrendUp = downApis == 0;
+
+        var apisDownStat = AdminCardStatsResponse.StatItem.builder()
+                .value(String.valueOf(downApis))
+                .subValue("Critical Issues")
+                .trend(downTrendStr)
+                .trendUp(downTrendUp)
+                .build();
+
+        // 5. Alerts Today
+        LocalDateTime startOfToday = LocalDateTime.now().toLocalDate().atStartOfDay();
+        LocalDateTime startOfYesterday = startOfToday.minusDays(1);
+        
+        long alertsTodayCount = incidentRepository.countByTriggeredAtAfter(startOfToday);
+        long alertsYesterdayCount = incidentRepository.countByTriggeredAtAfter(startOfYesterday) - alertsTodayCount;
+        
+        String alertsTrendStr = calculateGrowthStr(alertsTodayCount, alertsYesterdayCount);
+        boolean alertsTrendUp = alertsTodayCount <= alertsYesterdayCount;
+
+        var alertsTodayStat = AdminCardStatsResponse.StatItem.builder()
+                .value(String.valueOf(alertsTodayCount))
+                .subValue("Triggered Today")
+                .trend(alertsTrendStr)
+                .trendUp(alertsTrendUp)
+                .build();
+
+        return AdminCardStatsResponse.builder()
+                .revenue(revenueStat)
+                .totalUsers(usersStat)
+                .apisMonitored(apisMonitoredStat)
+                .apisDown(apisDownStat)
+                .alertsToday(alertsTodayStat)
+                .build();
+    }
+
+    @Override
     @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:performance:' + #range")
     public AdminPerformanceResponse getPerformance(String range) {
         LocalDateTime since = parseRange(range);
