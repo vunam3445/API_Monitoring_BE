@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Kế thừa cấu hình mặc định từ Spring Boot (CONSOLE appender + log format chuẩn) -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!--
+        RabbitMQ Appender: Thu thập log WARN/ERROR/FATAL của package com.example.demo
+        và đẩy bất đồng bộ vào queue "system.logs.queue".
+        Đây là log lỗi nội bộ của HỆ THỐNG, KHÔNG phải log giám sát API của người dùng.
+    -->
+    <appender name="RABBIT_SYSTEM_LOG" class="com.example.demo.common.logging.RabbitMqLogAppender">
+        <host>localhost</host>
+        <port>5672</port>
+        <username>guest</username>
+        <password>guest</password>
+        <queueName>system.logs.queue</queueName>
+    </appender>
+
+    <!-- Root logger: chỉ xuất ra Console (không ghi DB) -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!--
+        Logger riêng cho package nội bộ com.example.demo:
+        - Level WARN trở lên sẽ được đẩy vào RabbitMQ → ghi Database.
+        - additivity="false": tắt kế thừa từ root logger để tránh log bị in 2 lần.
+    -->
+    <logger name="com.example.demo" level="WARN" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="RABBIT_SYSTEM_LOG"/>
+    </logger>
+</configuration>

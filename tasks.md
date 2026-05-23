@@ -1,39 +1,125 @@
-# Kế Hoạch Thay Thế Mock Data - Dashboard
+# 📃 ĐẶC TẢ YÊU CẦU TẠO API GIÁM SÁT LOG LỖI HỆ THỐNG (SYSTEM LOGS)
 
-## Danh sách các hàm đang sử dụng Mock Data
-
-### 1. `AdminDashboardServiceImpl.java`
-- **Hàm `getV2Stats()`**: Đang sử dụng các giá trị hardcode (mock) cho xu hướng (trend).
-  - *Current*: `trend("12%")` (Users), `trend("5%")` (Active Monitors), `trend("2%")` (Critical Issues), `trend("8%")` (Alerts).
-  - *Thay thế*: Đã tính toán số lượng của khoảng thời gian hiện tại so với khoảng thời gian trước đó (30 ngày qua so với 30 ngày trước cho Users, 7 ngày qua so với 7 ngày trước cho Monitors, và hôm nay so với hôm qua cho Alerts) để tính phần trăm xu hướng thực tế (`calculateGrowthStr()`). [ĐÃ HOÀN THÀNH]
-- **Hàm `getPerformance()`**: Đang có comment "Mock for now or derive from logs".
-  - *Current*: `double errorRate = 100.0 - uptimeStats.getUptimePercentage();` (Tính error rate một cách xấp xỉ).
-  - *Thay thế*: Đã query trực tiếp tỷ lệ lỗi từ database bằng query `getGlobalErrorRateStats` (số lượng check failed / tổng số check) trong `UptimeLogsRepository`. [ĐÃ HOÀN THÀNH]
-- **Hàm `getInfrastructure()`**: Trạng thái hàng đợi đang bị hardcode.
-  - *Current*: `.queueStatus(AdminInfrastructureResponse.QueueStatus.builder().label("Healthy").type("HEALTHY").build())`
-  - *Thay thế*: Đã lấy dữ liệu từ hệ thống RabbitMQ thực tế qua `amqpAdmin.getQueueInfo(MonitorMQConfig.QUEUE_NAME)` để set dynamic status: Healthy (0), Busy (<50), Overloaded (>=50). [ĐÃ HOÀN THÀNH]
-
-### 2. `DashboardService.java`
-- **Hàm `getSummary()`**: Các thông số delta đang để là 0 (placeholder).
-  - *Current*: `totalMonitorsDelta(0)`, `currentlyDownDelta(0)`, `avgLatencyDeltaMs(0)` (với comment `// Placeholder`).
-  - *Thay thế*: Đã tính toán chính xác giá trị cho khoảng thời gian trước đó (24h trước) và tính độ lệch (delta) so với hiện tại sử dụng các query khoảng thời gian `countTotalByUserInRange`, `countUpByUserInRange`, `getAvgLatencyByUserInRange` và `countActiveAlertsAtTime`. [ĐÃ HOÀN THÀNH]
-- **Hàm `getPlanUsage()`**: Hardcode logic cho gói Free nếu không tìm thấy trong database.
-  - *Current*: Fallback tạo mới gói "Free" với giới hạn 5 monitors trong code.
-  - *Thay thế*: Đã loại bỏ đoạn code tạo fallback đối tượng ảo, thay vào đó throw `ResourceNotFoundException` nếu gói "Free" không tồn tại trong Database, đảm bảo chuẩn hóa dữ liệu. [ĐÃ HOÀN THÀNH]
+Tài liệu này phân tích chi tiết giao diện giám sát log của Admin (`AdminSystemLogs.jsx`) và định nghĩa các yêu cầu tạo API tương ứng ở Spring Boot Backend để hoàn thiện tính năng hiển thị dữ liệu động (bỏ qua WebSocket).
 
 ---
 
-## Kế hoạch thực thi (Implementation Plan)
+## 🏛️ 1. Danh sách các API cần xây dựng
 
-### [V] Bước 1: Khắc phục Mock Data trong `DashboardService.java`
-1. Cập nhật `getSummary()`: Tính toán lại các thông số `totalMonitors`, `currentlyDown`, và `avgLatency` cho 24h trước và tính toán delta chính xác. -> **Hoàn thành**
-2. Cập nhật `getPlanUsage()`: Loại bỏ đoạn code tạo fallback đối tượng. Thay vào đó, throw Exception hoặc trả về kết quả default lấy từ Database. -> **Hoàn thành**
+Hệ thống Spring Boot Backend cần cung cấp 3 API RESTful dưới đây:
 
-### [V] Bước 2: Khắc phục Mock Data trong `AdminDashboardServiceImpl.java`
-1. Cập nhật `getV2Stats()`: Thêm các queries vào Repositories để lấy thông số (User, Monitor, Alert) trong khoảng thời gian trước (vd: 24h trước). Tính `% growth`. -> **Hoàn thành**
-2. Cập nhật `getPerformance()`: Gọi API tính toán error rate từ `uptimeLogsRepository` thay vì tính ngược qua Uptime. -> **Hoàn thành**
-3. Cập nhật `getInfrastructure()`: Thích hợp với logic lấy số lượng Actuator hoặc Queue thật sự để set status. -> **Hoàn thành**
+| STT | Tên API | Method | Endpoint | Quyền truy cập |
+|---|---|---|---|---|
+| 1 | Lấy danh sách logs (có phân trang & bộ lọc) | `GET` | `/api/v1/admin/system-logs` | ADMIN |
+| 2 | Lấy số liệu thống kê logs trong ngày hôm nay | `GET` | `/api/v1/admin/system-logs/stats` | ADMIN |
+| 3 | Thực hiện dọn dẹp các log cũ hơn 30 ngày | `DELETE` | `/api/v1/admin/system-logs/clear` | ADMIN |
 
-### [V] Bước 3: Kiểm thử
-1. Chạy các bài test unit. -> **Hoàn thành (3/3 tests passed thành công!)**
-2. Khởi động ứng dụng, kiểm tra qua API để chắc chắn kết quả trả về là số liệu thực. -> **Hoàn thành**
+---
+
+## ⚙️ 2. Mô tả chi tiết từng API
+
+### 📑 API 1: Lấy danh sách System Logs (Phân trang & Bộ lọc)
+API này dùng để tải danh sách logs hiển thị lên bảng Grid chính, hỗ trợ các thao tác tìm kiếm toàn văn, lọc theo Log Level và lọc theo khoảng thời gian xảy ra sự cố.
+
+#### A. Dữ liệu đầu vào (Request Inputs - Query Parameters)
+Tất cả các tham số đầu vào đều là tùy chọn (Optional):
+
+| Tên tham số | Kiểu dữ liệu | Giá trị mặc định | Mô tả |
+|---|---|---|---|
+| `page` | Integer | `0` | Số thứ tự trang cần lấy (0-indexed ở Backend). |
+| `size` | Integer | `50` | Số dòng log tối đa trên một trang. |
+| `level` | String | `ALL` | Bộ lọc theo cấp độ log. Giá trị chấp nhận: `ALL`, `INFO`, `WARN`, `ERROR`, `FATAL`. |
+| `keyword` | String | *Rỗng* | Từ khóa tìm kiếm toàn văn (Backend sẽ tìm kiếm khớp chuỗi không phân biệt hoa/thường trên các cột: `message`, `component`, `threadId`). |
+| `timeRange` | String | `ALL` | Lọc nhanh theo khoảng thời gian. Giá trị chấp nhận: `ALL` (Tất cả), `5m` (5 phút trước), `1h` (1 giờ trước), `24h` (24 giờ trước). |
+
+#### B. Dữ liệu đầu ra mẫu (Response Output - JSON)
+* **HTTP Status:** `200 OK`
+* **Content-Type:** `application/json`
+* **Cấu trúc JSON (Chuẩn Spring Data Page):**
+
+```json
+{
+  "content": [
+    {
+      "id": "log-1779533601577-124",
+      "timestamp": "2026-05-23T19:30:15.124Z",
+      "level": "ERROR",
+      "component": "com.example.demo.modules.system.services.MailService",
+      "threadId": "task-scheduler-2",
+      "message": "Failed to connect to SMTP server smtp.gmail.com:465. Connection timed out.",
+      "stackTrace": "java.net.ConnectException: Connection timed out\n\tat java.base/sun.nio.ch.Net.connect0(Native Method)\n\tat java.base/sun.nio.ch.Net.connect(Net.java:579)\n\tat com.sun.mail.smtp.SMTPTransport.openServer(SMTPTransport.java:2175)"
+    },
+    {
+      "id": "log-1779533600210-520",
+      "timestamp": "2026-05-23T19:29:10.045Z",
+      "level": "INFO",
+      "component": "com.example.demo.security.JwtAuthenticationFilter",
+      "threadId": "http-nio-8080-exec-1",
+      "message": "Successfully authenticated user 'admin_user' from IP 192.168.1.105",
+      "stackTrace": null
+    }
+  ],
+  "totalPages": 3,
+  "totalElements": 150,
+  "size": 50,
+  "number": 0,
+  "numberOfElements": 2,
+  "first": true,
+  "last": false,
+  "empty": false
+}
+```
+
+---
+
+### 📊 API 2: Số liệu thống kê logs trong ngày hôm nay (Quick Stats)
+API này tự động tính toán tổng số logs, số lượng logs INFO, WARNING, ERROR, FATAL phát sinh trong ngày hôm nay (tính từ `00:00:00` đến thời điểm hiện tại) để hiển thị lên 5 thẻ Stats trên cùng của giao diện.
+
+#### A. Dữ liệu đầu vào (Request Inputs)
+* Không có tham số đầu vào. API tự động lọc theo múi giờ hệ thống của ngày hiện tại.
+
+#### B. Dữ liệu đầu ra mẫu (Response Output - JSON)
+* **HTTP Status:** `200 OK`
+* **Content-Type:** `application/json`
+
+```json
+{
+  "total": 5240,
+  "infos": 4850,
+  "warnings": 342,
+  "errors": 45,
+  "fatals": 3
+}
+```
+
+---
+
+### 🧹 API 3: Thực hiện dọn dẹp các log cũ (Clear Old Logs)
+Khi Admin bấm nút "Dọn dẹp log", Frontend sẽ gọi API này để xóa bỏ các log cũ hơn nhằm tránh làm đầy cơ sở dữ liệu. Theo đặc tả nghiệp vụ, API này mặc định xóa các bản ghi log hệ thống cũ hơn 30 ngày.
+
+#### A. Dữ liệu đầu vào (Request Inputs - Query Parameters)
+* Mặc định xóa log > 30 ngày. Admin có thể truyền thêm tham số tùy chọn:
+
+| Tên tham số | Kiểu dữ liệu | Giá trị mặc định | Mô tả |
+|---|---|---|---|
+| `retentionDays` | Integer | `30` | Số ngày giữ lại logs. Các log cũ hơn số ngày này sẽ bị xóa khỏi Database. |
+
+#### B. Dữ liệu đầu ra mẫu (Response Output - JSON)
+* **HTTP Status:** `200 OK`
+* **Content-Type:** `application/json`
+
+```json
+{
+  "success": true,
+  "message": "Successfully cleared 4210 old log records older than 30 days.",
+  "deletedCount": 4210,
+  "retentionDays": 30
+}
+```
+
+---
+
+## 💡 Gợi ý thiết kế logic tối ưu ở Backend
+Để tối ưu hóa hiệu năng tối đa cho Spring Boot Backend của dự án **API Monitoring**:
+1. **Lọc log tại tầng Logback:** Chỉ cấu hình ghi log cấp độ `WARN`, `ERROR` và `FATAL` vào Database (Table `system_logs`). Các log cấp độ `INFO` thông thường chỉ nên xuất ra Console/File để giảm thiểu 85% số lượng I/O ghi vào DB.
+2. **Lập chỉ mục (Index):** Hãy đánh chỉ mục (Index) cho các cột `timestamp`, `level` và `component` trong table database để đảm bảo truy vấn tìm kiếm và lọc logs diễn ra tức thì dưới 50ms ngay cả khi dung lượng bản ghi tăng cao.
