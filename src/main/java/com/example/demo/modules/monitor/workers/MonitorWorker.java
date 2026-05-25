@@ -53,7 +53,7 @@ public class MonitorWorker {
     private final DashboardCacheService dashboardCacheService;
     private final com.example.demo.modules.system.services.ISystemSettingService systemSettingService;
 
-    @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
+    @RabbitListener(id = "monitorWorkerContainer", queues = MonitorMQConfig.QUEUE_NAME)
     public void processMonitorJob(MonitorExecutionMessage message) {
         // 0. Kiểm tra trạng thái Global Pause
         if (systemSettingService.isGlobalPaused()) {

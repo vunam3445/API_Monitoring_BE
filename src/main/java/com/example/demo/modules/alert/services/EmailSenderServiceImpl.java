@@ -54,6 +54,39 @@ public class EmailSenderServiceImpl implements EmailSenderService {
         sendHtmlEmail(recipient, subject, content);
     }
 
+    @Override
+    public void sendNotificationEmail(String recipient, String title, String content, String level) {
+        String subjectPrefix = "SYSTEM".equals(level) ? "[HỆ THỐNG]" : "WARNING".equals(level) ? "[CẢNH BÁO]" : "[THÔNG BÁO]";
+        String subject = String.format("%s %s - API Monitoring", subjectPrefix, title);
+        String htmlContent = buildNotificationHtmlContent(title, content, level);
+        sendHtmlEmail(recipient, subject, htmlContent);
+    }
+
+    private String buildNotificationHtmlContent(String title, String content, String level) {
+        String badgeColor = "SYSTEM".equals(level) ? "#7c3aed" : "WARNING".equals(level) ? "#d97706" : "#2563eb";
+        String badgeLabel = "SYSTEM".equals(level) ? "Hệ Thống" : "WARNING".equals(level) ? "Cảnh Báo" : "Thông Tin";
+        return String.format(
+            "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 40px 10px; color: #1e293b;\">" +
+            "  <div style=\"max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e2e8f0;\">" +
+            "    <div style=\"background: linear-gradient(135deg, #4f46e5 0%%, #3b82f6 100%%); padding: 35px 20px; text-align: center;\">" +
+            "      <h1 style=\"color: #ffffff; margin: 0; font-size: 24px; font-weight: 800;\">API Monitoring</h1>" +
+            "      <p style=\"color: #e0e7ff; margin: 5px 0 0 0; font-size: 14px;\">Hệ thống giám sát hiệu năng API thông minh</p>" +
+            "    </div>" +
+            "    <div style=\"padding: 40px 30px;\">" +
+            "      <span style=\"display: inline-block; background-color: %s; color: #fff; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 18px;\">%s</span>" +
+            "      <h2 style=\"color: #0f172a; margin-top: 0; font-size: 20px; font-weight: 700;\">%s</h2>" +
+            "      <p style=\"font-size: 15px; line-height: 1.7; color: #475569;\">%s</p>" +
+            "    </div>" +
+            "    <div style=\"background-color: #f1f5f9; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;\">" +
+            "      <p style=\"margin: 0;\">Đây là email tự động từ hệ thống API Monitoring, vui lòng không trả lời trực tiếp.</p>" +
+            "    </div>" +
+            "  </div>" +
+            "</div>",
+            badgeColor, badgeLabel, title, content
+        );
+    }
+
+
     private String buildSubscriptionExpiryHtmlContent(String userName, String planName, String expiryDate) {
         return String.format(
             "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 40px 10px; color: #1e293b;\">" +

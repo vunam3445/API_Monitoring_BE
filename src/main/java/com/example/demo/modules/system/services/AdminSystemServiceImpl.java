@@ -41,12 +41,18 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
     @Override
     public void toggleGlobalPause(boolean paused) {
         this.globalPaused = paused;
-        if (paused) {
-            rabbitListenerEndpointRegistry.stop();
-            log.info("Global execution paused (listeners stopped)");
+        MessageListenerContainer monitorContainer = 
+                rabbitListenerEndpointRegistry.getListenerContainer("monitorWorkerContainer");
+        if (monitorContainer != null) {
+            if (paused) {
+                monitorContainer.stop();
+                log.info("API Monitoring paused (monitor worker container stopped)");
+            } else {
+                monitorContainer.start();
+                log.info("API Monitoring resumed (monitor worker container started)");
+            }
         } else {
-            rabbitListenerEndpointRegistry.start();
-            log.info("Global execution resumed (listeners started)");
+            log.warn("Monitor worker container not found for toggling pause status");
         }
     }
 
@@ -74,7 +80,13 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
 
     @Override
     public int getTotalWorkerCount() {
-        return workerConcurrency;
+        try {
+            int listenerCount = rabbitListenerEndpointRegistry.getListenerContainers().size();
+            return workerConcurrency * Math.max(1, listenerCount);
+        } catch (Exception e) {
+            log.warn("Failed to get total worker count", e);
+            return workerConcurrency;
+        }
     }
 
     @Override
