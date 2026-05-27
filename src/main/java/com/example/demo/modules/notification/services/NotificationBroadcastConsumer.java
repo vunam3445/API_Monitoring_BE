@@ -88,18 +88,23 @@ public class NotificationBroadcastConsumer {
                     }
                 }
 
+                // Xác định địa chỉ email nhận thông báo: Ưu tiên alertEmail từ UserSetting, nếu trống thì dùng user.getEmail()
+                String recipientEmail = (setting != null && setting.getAlertEmail() != null && !setting.getAlertEmail().isBlank())
+                        ? setting.getAlertEmail()
+                        : user.getEmail();
+
                 // B. Kênh Email: Gửi email chỉ nếu là cấp SYSTEM hoặc user bật cài đặt nhận email
                 if (event.sendEmail()) {
                     if ("SYSTEM".equalsIgnoreCase(event.level()) || emailAlertsEnabled) {
                         try {
                             emailSenderService.sendNotificationEmail(
-                                    user.getEmail(),
+                                    recipientEmail,
                                     event.title(),
                                     event.content(),
                                     event.level()
                             );
                         } catch (Exception e) {
-                            log.error("[NotificationConsumer] Lỗi gửi email tới {}: {}", user.getEmail(), e.getMessage());
+                            log.error("[NotificationConsumer] Lỗi gửi email tới {}: {}", recipientEmail, e.getMessage());
                         }
                     }
                 }
@@ -121,7 +126,7 @@ public class NotificationBroadcastConsumer {
                             String warnContent = "Bạn đã kích hoạt nhận thông báo qua Slack nhưng chưa cấu hình Webhook URL. Vui lòng cập nhật trong phần 'Cài đặt tài khoản' để nhận được các cảnh báo quan trọng.";
                             
                             // Gửi email cảnh báo
-                            emailSenderService.sendNotificationEmail(user.getEmail(), warnTitle, warnContent, "WARNING");
+                            emailSenderService.sendNotificationEmail(recipientEmail, warnTitle, warnContent, "WARNING");
                             
                             // Gửi Web/SSE cảnh báo
                             if (event.sendWeb()) {
@@ -129,7 +134,7 @@ public class NotificationBroadcastConsumer {
                                         .title(warnTitle)
                                         .content(warnContent)
                                         .targetType(TargetType.SINGLE)
-                                        .targetValue(user.getEmail())
+                                        .targetValue(recipientEmail)
                                         .level(NotificationLevel.WARNING)
                                         .sendWeb(true)
                                         .sendEmail(false)
@@ -142,7 +147,7 @@ public class NotificationBroadcastConsumer {
                             }
                             log.info("[NotificationConsumer] Đã gửi cảnh báo thiếu Slack Webhook cho userId={}", user.getId());
                         } catch (Exception ex) {
-                            log.error("[NotificationConsumer] Lỗi gửi cảnh báo thiếu Slack Webhook tới {}: {}", user.getEmail(), ex.getMessage());
+                            log.error("[NotificationConsumer] Lỗi gửi cảnh báo thiếu Slack Webhook tới {}: {}", recipientEmail, ex.getMessage());
                         }
                     }
                 }

@@ -89,19 +89,23 @@ public class MonitorService
         // Kiểm tra xem có phải Admin xóa monitor của user khác hay không
         try {
             User currentUser = iSecurityContextService.getCurrentUser().orElse(null);
-            if (currentUser != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().name()) && !currentUser.getId().equals(monitor.getUserId())) {
+            if (currentUser != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().name())
+                    && !currentUser.getId().equals(monitor.getUserId())) {
                 User owner = userRepository.findById(monitor.getUserId()).orElse(null);
                 if (owner != null) {
                     SendNotificationRequest request = new SendNotificationRequest();
                     request.setTitle("Monitor của bạn đã bị xóa bởi Quản trị viên");
-                    request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã bị xóa khỏi hệ thống bởi Admin.", monitor.getName(), monitor.getUrl()));
+                    request.setContent(
+                            String.format("Monitor '%s' (URL: %s) của bạn đã bị xóa khỏi hệ thống bởi Admin.",
+                                    monitor.getName(), monitor.getUrl()));
                     request.setTargetType(TargetType.SINGLE);
                     request.setTargetValue(owner.getEmail());
                     request.setLevel(NotificationLevel.WARNING);
                     request.setSendWeb(true);
                     request.setSendEmail(true);
                     notificationService.sendNotification(request);
-                    log.info("[MonitorService] Đã kích hoạt gửi thông báo xóa monitor '{}' tới {}", monitor.getName(), owner.getEmail());
+                    log.info("[MonitorService] Đã kích hoạt gửi thông báo xóa monitor '{}' tới {}", monitor.getName(),
+                            owner.getEmail());
                 }
             }
         } catch (Exception e) {
@@ -150,36 +154,7 @@ public class MonitorService
         Monitor monitor = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy dữ liệu: " + id));
 
-        boolean willBeActive = !monitor.getIsActive();
-        monitor.setIsActive(willBeActive);
-
-        // Kiểm tra xem có phải Admin đổi trạng thái monitor của user khác hay không
-        try {
-            User currentUser = iSecurityContextService.getCurrentUser().orElse(null);
-            if (currentUser != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().name()) && !currentUser.getId().equals(monitor.getUserId())) {
-                User owner = userRepository.findById(monitor.getUserId()).orElse(null);
-                if (owner != null) {
-                    SendNotificationRequest request = new SendNotificationRequest();
-                    if (!willBeActive) {
-                        request.setTitle("Monitor của bạn đã bị tạm dừng bởi Quản trị viên");
-                        request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã bị tạm dừng hoạt động bởi Admin hệ thống.", monitor.getName(), monitor.getUrl()));
-                        request.setLevel(NotificationLevel.WARNING);
-                    } else {
-                        request.setTitle("Monitor của bạn đã được kích hoạt lại bởi Quản trị viên");
-                        request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã được kích hoạt hoạt động trở lại bởi Admin hệ thống.", monitor.getName(), monitor.getUrl()));
-                        request.setLevel(NotificationLevel.INFO);
-                    }
-                    request.setTargetType(TargetType.SINGLE);
-                    request.setTargetValue(owner.getEmail());
-                    request.setSendWeb(true);
-                    request.setSendEmail(true);
-                    notificationService.sendNotification(request);
-                    log.info("[MonitorService] Admin đã đổi isActive={} cho monitor '{}' của user {}", willBeActive, monitor.getName(), owner.getEmail());
-                }
-            }
-        } catch (Exception e) {
-            log.error("[MonitorService] Lỗi gửi thông báo khi admin đổi trạng thái monitor: {}", e.getMessage());
-        }
+        monitor.setIsActive(!monitor.getIsActive());
 
         evictObjectCache(monitor.getId());
         evictListCache();
@@ -224,11 +199,13 @@ public class MonitorService
                 .orElseThrow(() -> new AuthenticationException("Không tìm thấy thông tin người dùng."));
 
         // Lấy gói đăng ký đang hoạt động của người dùng
-        Subscription activeSubscription = subscriptionRepository.findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE)
+        Subscription activeSubscription = subscriptionRepository
+                .findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE)
                 .orElseThrow(() -> new ForbidenException("Bạn không có gói đăng ký nào đang hoạt động."));
 
         // 1. Kiểm tra thời gian hết hạn của gói
-        if (activeSubscription.getCurrentPeriodEnd() != null && activeSubscription.getCurrentPeriodEnd().isBefore(LocalDateTime.now())) {
+        if (activeSubscription.getCurrentPeriodEnd() != null
+                && activeSubscription.getCurrentPeriodEnd().isBefore(LocalDateTime.now())) {
             throw new ForbidenException("Gói đăng ký của bạn đã hết hạn, vui lòng gia hạn để tiếp tục sử dụng.");
         }
 
@@ -241,8 +218,9 @@ public class MonitorService
 
         // 3. Kiểm tra khoảng thời gian check tối thiểu của gói
         if (request.getCheckInterval() < activeSubscription.getMinInterval()) {
-            throw new ForbidenException("Gói " + activeSubscription.getPlanName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
-                    + activeSubscription.getMinInterval() + " giây.");
+            throw new ForbidenException(
+                    "Gói " + activeSubscription.getPlanName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
+                            + activeSubscription.getMinInterval() + " giây.");
         }
 
         // 3. Tạo mới monitor

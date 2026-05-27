@@ -24,14 +24,21 @@ import java.util.Map;
 public class ApplicationLogConsumer {
 
     private final ApplicationLogRepository applicationLogRepository;
+    private final com.example.demo.modules.system.services.ActiveWorkerRegistry activeWorkerRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ApplicationLogConsumer(ApplicationLogRepository applicationLogRepository) {
+    public ApplicationLogConsumer(ApplicationLogRepository applicationLogRepository,
+                                   com.example.demo.modules.system.services.ActiveWorkerRegistry activeWorkerRegistry) {
         this.applicationLogRepository = applicationLogRepository;
+        this.activeWorkerRegistry = activeWorkerRegistry;
     }
 
-    @RabbitListener(queues = "system.logs.queue")
+    @RabbitListener(
+            queues = "system.logs.queue",
+            concurrency = "${app.rabbitmq.concurrency.log}"
+    )
     public void consumeApplicationLog(Message message) {
+        activeWorkerRegistry.increment();
         try {
             byte[] messageBytes = message.getBody();
             @SuppressWarnings("unchecked")
@@ -55,6 +62,8 @@ public class ApplicationLogConsumer {
         } catch (Exception e) {
             // Dùng System.err thay vì logger để tránh tạo vòng lặp log đệ quy vô hạn
             System.err.println("[ApplicationLogConsumer] Failed to persist application log: " + e.getMessage());
+        } finally {
+            activeWorkerRegistry.decrement();
         }
     }
 }

@@ -22,6 +22,7 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
     private final RabbitListenerEndpointRegistry rabbitListenerEndpointRegistry;
     private final RabbitAdmin rabbitAdmin;
     private final DataSource dataSource;
+    private final ActiveWorkerRegistry activeWorkerRegistry;
 
     @Value("${spring.rabbitmq.listener.simple.concurrency:20}")
     private int workerConcurrency;
@@ -63,26 +64,29 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
 
     @Override
     public int getActiveWorkerCount() {
-        int active = 0;
-        try {
-            for (MessageListenerContainer container : rabbitListenerEndpointRegistry.getListenerContainers()) {
-                if (container instanceof SimpleMessageListenerContainer) {
-                    active += ((SimpleMessageListenerContainer) container).getActiveConsumerCount();
-                } else {
-                    active += container.isRunning() ? 1 : 0;
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to get active worker count", e);
-        }
-        return active;
+        // Trả về số Busy Threads thực tế từ registry thay vì đếm Alive Threads của Spring AMQP
+        return activeWorkerRegistry.getActiveCount();
     }
 
     @Override
     public int getTotalWorkerCount() {
         try {
-            int listenerCount = rabbitListenerEndpointRegistry.getListenerContainers().size();
-            return workerConcurrency * Math.max(1, listenerCount);
+            int total = 0;
+            for (MessageListenerContainer container : rabbitListenerEndpointRegistry.getListenerContainers()) {
+                if (container instanceof SimpleMessageListenerContainer) {
+                    try {
+                        java.lang.reflect.Field field = SimpleMessageListenerContainer.class.getDeclaredField("concurrentConsumers");
+                        field.setAccessible(true);
+                        total += (int) field.get(container);
+                    } catch (Exception e) {
+                        log.warn("Failed to reflect concurrentConsumers field, fallback to default", e);
+                        total += workerConcurrency;
+                    }
+                } else {
+                    total += 1;
+                }
+            }
+            return total > 0 ? total : workerConcurrency;
         } catch (Exception e) {
             log.warn("Failed to get total worker count", e);
             return workerConcurrency;
