@@ -12,6 +12,11 @@ import com.example.demo.modules.monitor.dto.UpdateApiRequest;
 import com.example.demo.common.exceptions.AuthenticationException;
 import com.example.demo.common.exceptions.ForbidenException;
 import com.example.demo.modules.user.entities.User;
+import com.example.demo.modules.notification.services.NotificationService;
+import com.example.demo.modules.notification.dto.SendNotificationRequest;
+import com.example.demo.modules.notification.enums.NotificationLevel;
+import com.example.demo.modules.notification.enums.TargetType;
+import lombok.extern.slf4j.Slf4j;
 
 import com.example.demo.modules.monitor.entities.Monitor;
 import com.example.demo.modules.monitor.mappers.MonitorMapper;
@@ -40,6 +45,7 @@ import com.example.demo.modules.subscription.enums.SubscriptionStatus;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 
 @Service
+@Slf4j
 public class MonitorService
         extends BaseService<Monitor, UUID, CreateApiRequest, UpdateApiRequest, ApiResponse>
         implements IMonitorService {
@@ -50,6 +56,7 @@ public class MonitorService
     private final UserRepository userRepository;
     private final DashboardCacheService dashboardCacheService;
     private final SubscriptionRepository subscriptionRepository;
+    private final NotificationService notificationService;
 
     public MonitorService(
             MonitorRepository repository,
@@ -60,7 +67,8 @@ public class MonitorService
             UserRepository userRepository,
             DashboardCacheService dashboardCacheService,
             MonitorProducer monitorProducer,
-            SubscriptionRepository subscriptionRepository) {
+            SubscriptionRepository subscriptionRepository,
+            NotificationService notificationService) {
         super(repository, mapper, cacheService);
         this.monitorRepository = repository;
         this.lockService = lockService;
@@ -69,6 +77,7 @@ public class MonitorService
         this.userRepository = userRepository;
         this.dashboardCacheService = dashboardCacheService;
         this.subscriptionRepository = subscriptionRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -76,6 +85,28 @@ public class MonitorService
     public void delete(UUID id) {
         Monitor monitor = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Monitor: " + id));
+
+        // Kiểm tra xem có phải Admin xóa monitor của user khác hay không
+        try {
+            User currentUser = iSecurityContextService.getCurrentUser().orElse(null);
+            if (currentUser != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().name()) && !currentUser.getId().equals(monitor.getUserId())) {
+                User owner = userRepository.findById(monitor.getUserId()).orElse(null);
+                if (owner != null) {
+                    SendNotificationRequest request = new SendNotificationRequest();
+                    request.setTitle("Monitor của bạn đã bị xóa bởi Quản trị viên");
+                    request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã bị xóa khỏi hệ thống bởi Admin.", monitor.getName(), monitor.getUrl()));
+                    request.setTargetType(TargetType.SINGLE);
+                    request.setTargetValue(owner.getEmail());
+                    request.setLevel(NotificationLevel.WARNING);
+                    request.setSendWeb(true);
+                    request.setSendEmail(true);
+                    notificationService.sendNotification(request);
+                    log.info("[MonitorService] Đã kích hoạt gửi thông báo xóa monitor '{}' tới {}", monitor.getName(), owner.getEmail());
+                }
+            }
+        } catch (Exception e) {
+            log.error("[MonitorService] Lỗi gửi thông báo khi admin xóa monitor: {}", e.getMessage());
+        }
 
         // Gọi lệnh delete trên instance sẽ kích hoạt JPA Cascade đã cấu hình ở Entity
         repository.delete(monitor);
