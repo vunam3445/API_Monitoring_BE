@@ -117,6 +117,8 @@ public class ManagerUserService implements IManagerUserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("Không tìm thấy user"));
         user.setStatus(UserStatus.SUSPENDED);
+        user.setRefreshToken(null);
+        user.setRefreshTokenExpiry(null);
         userRepository.saveAndFlush(user);
 
         // Xóa cache danh sách admin và danh sách người dùng chung

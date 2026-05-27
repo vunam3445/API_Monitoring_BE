@@ -28,24 +28,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain
-    ) throws ServletException, IOException {
+            @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final String userEmail;
 
-        // 1. Lấy token từ Header Authorization hoặc Query Parameter "token" (hỗ trợ SSE)
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            jwt = authHeader.substring(7);
-        } else {
-            jwt = request.getParameter("token");
-        }
-
-        if (jwt == null) {
+        // 1. Kiểm tra xem Header có chứa Bearer Token không
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
+
+        jwt = authHeader.substring(7);
         try {
             userEmail = jwtService.extractUsername(jwt);
 
@@ -55,11 +50,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 // 3. Nếu token hợp lệ, thiết lập quyền truy cập cho Spring Security
                 if (jwtService.isTokenValid(jwt, userDetails)) {
+                    if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json;charset=UTF-8");
+                        String jsonResponse = "{\"status\": 401, \"error\": \"Unauthorized\", \"message\": \"Tài khoản của bạn đã bị khóa hoặc ngừng kích hoạt\"}";
+                        response.getWriter().write(jsonResponse);
+                        return;
+                    }
+
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
                             null,
-                            userDetails.getAuthorities()
-                    );
+                            userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                     // "Đánh dấu" là người dùng này đã đăng nhập thành công
