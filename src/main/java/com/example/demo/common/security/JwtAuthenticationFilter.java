@@ -35,13 +35,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt;
         final String userEmail;
 
-        // 1. Kiểm tra xem Header có chứa Bearer Token không
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        // 1. Lấy token từ Header Authorization hoặc Query Parameter "token" (hỗ trợ SSE)
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            jwt = authHeader.substring(7);
+        } else {
+            jwt = request.getParameter("token");
+        }
+
+        if (jwt == null) {
             filterChain.doFilter(request, response);
             return;
         }
-
-        jwt = authHeader.substring(7);
         try {
             userEmail = jwtService.extractUsername(jwt);
 
