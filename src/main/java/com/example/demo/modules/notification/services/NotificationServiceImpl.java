@@ -60,8 +60,21 @@ public class NotificationServiceImpl implements NotificationService {
                 notification.isSendWeb(),
                 notification.isSendEmail()
         );
-        rabbitTemplate.convertAndSend(NotificationMQConfig.BROADCAST_QUEUE, event);
-        log.info("[NotificationService] Đã đẩy sự kiện vào queue: {}", NotificationMQConfig.BROADCAST_QUEUE);
+
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        rabbitTemplate.convertAndSend(NotificationMQConfig.BROADCAST_QUEUE, event);
+                        log.info("[NotificationService] Đã đẩy sự kiện vào queue sau khi Transaction commit thành công: {}", NotificationMQConfig.BROADCAST_QUEUE);
+                    }
+                }
+            );
+        } else {
+            rabbitTemplate.convertAndSend(NotificationMQConfig.BROADCAST_QUEUE, event);
+            log.info("[NotificationService] Không có Transaction hoạt động. Đã đẩy sự kiện vào queue lập tức: {}", NotificationMQConfig.BROADCAST_QUEUE);
+        }
 
         return NotificationResponse.from(notification);
     }
