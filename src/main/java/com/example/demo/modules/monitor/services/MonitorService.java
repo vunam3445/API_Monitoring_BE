@@ -150,7 +150,36 @@ public class MonitorService
         Monitor monitor = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy dữ liệu: " + id));
 
-        monitor.setIsActive(!monitor.getIsActive());
+        boolean willBeActive = !monitor.getIsActive();
+        monitor.setIsActive(willBeActive);
+
+        // Kiểm tra xem có phải Admin đổi trạng thái monitor của user khác hay không
+        try {
+            User currentUser = iSecurityContextService.getCurrentUser().orElse(null);
+            if (currentUser != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().name()) && !currentUser.getId().equals(monitor.getUserId())) {
+                User owner = userRepository.findById(monitor.getUserId()).orElse(null);
+                if (owner != null) {
+                    SendNotificationRequest request = new SendNotificationRequest();
+                    if (!willBeActive) {
+                        request.setTitle("Monitor của bạn đã bị tạm dừng bởi Quản trị viên");
+                        request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã bị tạm dừng hoạt động bởi Admin hệ thống.", monitor.getName(), monitor.getUrl()));
+                        request.setLevel(NotificationLevel.WARNING);
+                    } else {
+                        request.setTitle("Monitor của bạn đã được kích hoạt lại bởi Quản trị viên");
+                        request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã được kích hoạt hoạt động trở lại bởi Admin hệ thống.", monitor.getName(), monitor.getUrl()));
+                        request.setLevel(NotificationLevel.INFO);
+                    }
+                    request.setTargetType(TargetType.SINGLE);
+                    request.setTargetValue(owner.getEmail());
+                    request.setSendWeb(true);
+                    request.setSendEmail(true);
+                    notificationService.sendNotification(request);
+                    log.info("[MonitorService] Admin đã đổi isActive={} cho monitor '{}' của user {}", willBeActive, monitor.getName(), owner.getEmail());
+                }
+            }
+        } catch (Exception e) {
+            log.error("[MonitorService] Lỗi gửi thông báo khi admin đổi trạng thái monitor: {}", e.getMessage());
+        }
 
         evictObjectCache(monitor.getId());
         evictListCache();
