@@ -34,19 +34,22 @@ public class SubscriptionService implements ISubscriptionService {
         private final ICacheService cacheService;
         private final PaymentLogsRepository paymentLogsRepository;
 
+        @org.springframework.beans.factory.annotation.Value("${app.subscription.default-free-plan-name:FREE}")
+        private String defaultFreePlanName;
+
         /**
          * Kích hoạt gói FREE cho người dùng (Không qua cổng thanh toán)
          */
         @Transactional
         @Override
         public void subscribeFreePlan(User user) {
-                SubscriptionPlan freePlan = planRepository.findByName("FREE")
+                SubscriptionPlan freePlan = planRepository.findByName(defaultFreePlanName)
                                 .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Lỗi hệ thống: Không tìm thấy cấu hình gói FREE."));
+                                                 "Lỗi hệ thống: Không tìm thấy cấu hình gói default: " + defaultFreePlanName));
 
                 // 1. Cập nhật thông tin gói trên User entity
                 user.setSubscriptionPlan(freePlan);
-                user.setPlanType("FREE");
+                user.setPlanType(freePlan.getName());
                 userRepository.save(user);
 
                 // 2. Tìm subscription hiện tại đang ACTIVE hoặc tạo mới
@@ -56,9 +59,9 @@ public class SubscriptionService implements ISubscriptionService {
 
                 subscription.setUser(user);
                 subscription.setPlan(freePlan);
-                subscription.setPlanName("FREE");
+                subscription.setPlanName(freePlan.getName());
                 subscription.setPlanPrice(BigDecimal.ZERO);
-                subscription.setCurrency("VND");
+                subscription.setCurrency(freePlan.getCurrency() != null ? freePlan.getCurrency() : "VND");
                 subscription.setMaxMonitors(freePlan.getMaxMonitors());
                 subscription.setMinInterval(freePlan.getMinInterval());
                 subscription.setStartDate(LocalDateTime.now());
