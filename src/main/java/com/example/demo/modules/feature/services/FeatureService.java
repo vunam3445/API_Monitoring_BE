@@ -12,6 +12,7 @@ import com.example.demo.modules.feature.dto.FeatureResponse;
 import com.example.demo.modules.feature.mappers.FeatureMapper;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.subscription.repositories.SubscriptionPlanRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -67,7 +68,7 @@ public class FeatureService
                     if (featureMap.containsKey(key) && Boolean.TRUE.equals(featureMap.get(key))) {
                         throw new FeatureInUseException("Không thể xóa tính năng này vì nó đang hoạt động trong gói cước: " + plan.getName());
                     }
-                } catch (Exception e) {
+                } catch (JsonProcessingException e) {
                     // Log error or ignore
                 }
             }
