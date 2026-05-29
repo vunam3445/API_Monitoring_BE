@@ -133,4 +133,16 @@ public class SubscriptionPlanService
                 .orElse(null);
     }
 
+    @Override
+    @org.springframework.transaction.annotation.Transactional
+    public void delete(UUID id) {
+        if (!repository.existsById(id)) {
+            throw new com.example.demo.common.exceptions.ResourceNotFoundException("Không tìm thấy gói đăng ký để xóa. ID: " + id);
+        }
+        if (userRepository.existsBySubscriptionPlanId(id)) {
+            throw new com.example.demo.common.exceptions.PlanInUseException("Không thể xóa gói đăng ký này vì đang có người dùng đăng ký sử dụng.");
+        }
+        super.delete(id);
+    }
+
 }

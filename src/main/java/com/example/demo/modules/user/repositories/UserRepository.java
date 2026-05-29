@@ -27,6 +27,8 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
 
     Optional<User> findByRefreshToken(String refreshToken);
 
+    boolean existsBySubscriptionPlanId(UUID planId);
+
     @Query("SELECT u.status, COUNT(u) FROM User u " +
            "WHERE u.role != :excludeRole " +
            "AND u.planType IS NOT NULL AND u.planType != '' " +
