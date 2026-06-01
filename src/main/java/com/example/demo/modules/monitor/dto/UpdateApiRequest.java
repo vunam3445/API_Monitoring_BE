@@ -2,7 +2,7 @@ package com.example.demo.modules.monitor.dto;
 
 import jakarta.validation.constraints.*;
 import lombok.*;
-import org.hibernate.validator.constraints.URL;
+import com.example.demo.common.security.annotations.SafeUrl;
 
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ public class UpdateApiRequest {
     private String name;
 
     @NotBlank(message = "URL không được để trống")
-    @URL(message = "Định dạng URL không hợp lệ")
+    @SafeUrl
     private String url;
 
     @NotBlank(message = "Method không được để trống")

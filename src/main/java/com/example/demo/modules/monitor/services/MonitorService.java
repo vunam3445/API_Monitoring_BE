@@ -23,6 +23,7 @@ import com.example.demo.modules.monitor.mappers.MonitorMapper;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.monitor.lock.DistributedLockService;
 import com.example.demo.modules.monitor.messaging.MonitorProducer;
+import com.example.demo.common.security.UrlSecurityValidator;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.dashboard.services.DashboardCacheService;
@@ -57,6 +58,7 @@ public class MonitorService
     private final DashboardCacheService dashboardCacheService;
     private final SubscriptionRepository subscriptionRepository;
     private final NotificationService notificationService;
+    private final UrlSecurityValidator urlSecurityValidator;
 
     public MonitorService(
             MonitorRepository repository,
@@ -68,7 +70,8 @@ public class MonitorService
             DashboardCacheService dashboardCacheService,
             MonitorProducer monitorProducer,
             SubscriptionRepository subscriptionRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            UrlSecurityValidator urlSecurityValidator) {
         super(repository, mapper, cacheService);
         this.monitorRepository = repository;
         this.lockService = lockService;
@@ -78,6 +81,7 @@ public class MonitorService
         this.dashboardCacheService = dashboardCacheService;
         this.subscriptionRepository = subscriptionRepository;
         this.notificationService = notificationService;
+        this.urlSecurityValidator = urlSecurityValidator;
     }
 
     @Override
@@ -224,6 +228,9 @@ public class MonitorService
         }
 
         // 3. Tạo mới monitor
+        // Kiểm tra CRLF injection trong headers và query params
+        validateMonitorParameters(request.getHeaders(), request.getQueryParams());
+
         Monitor monitor = mapper.toEntity(request);
         monitor.setUserId(user.getId());
 
@@ -234,5 +241,29 @@ public class MonitorService
         dashboardCacheService.clearUserDashboardCache(user.getId());
 
         return mapper.toResponse(savedMonitor);
+    }
+
+    /**
+     * Kiểm tra CRLF Injection trong headers và query parameters.
+     * Hàm này bảo vệ thêm một lớp nữa sau khi @SafeUrl đã kiểm tra URL.
+     */
+    private void validateMonitorParameters(java.util.List<java.util.Map<String, String>> headers,
+                                            java.util.List<java.util.Map<String, String>> queryParams) {
+        if (headers != null) {
+            for (java.util.Map<String, String> header : headers) {
+                for (java.util.Map.Entry<String, String> entry : header.entrySet()) {
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getKey());
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getValue());
+                }
+            }
+        }
+        if (queryParams != null) {
+            for (java.util.Map<String, String> param : queryParams) {
+                for (java.util.Map.Entry<String, String> entry : param.entrySet()) {
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getKey());
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getValue());
+                }
+            }
+        }
     }
 }

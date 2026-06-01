@@ -1,5 +1,7 @@
 package com.example.demo.modules.monitor.execution;
 
+import com.example.demo.common.exceptions.UrlSecurityValidationException;
+import com.example.demo.common.security.UrlSecurityValidator;
 import com.example.demo.modules.monitor.entities.Monitor;
 import com.example.demo.modules.monitor.enums.MonitorEventType;
 import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
@@ -34,11 +36,14 @@ public class WebClientApiExecutionService implements ApiExecutionService {
     private static final int RESPONSE_SNIPPET_MAX_LENGTH = 500;
 
     private final WebClient webClient;
+    private final UrlSecurityValidator urlSecurityValidator;
 
-    public WebClientApiExecutionService(WebClient.Builder webClientBuilder) {
+    public WebClientApiExecutionService(WebClient.Builder webClientBuilder,
+                                        UrlSecurityValidator urlSecurityValidator) {
         this.webClient = webClientBuilder
                 .codecs(config -> config.defaultCodecs().maxInMemorySize(1024 * 1024)) // 1MB
                 .build();
+        this.urlSecurityValidator = urlSecurityValidator;
     }
 
     @Override
@@ -50,6 +55,9 @@ public class WebClientApiExecutionService implements ApiExecutionService {
         long startTime = System.currentTimeMillis();
 
         try {
+            // Kiểm tra bảo mật URL ngay trước khi thực thi (chống DNS Rebinding)
+            urlSecurityValidator.validateUrl(monitor.getUrl());
+
             // Xây dựng và gửi request
             String responseBody = buildAndSendRequest(monitor, timeoutMs);
             long responseTimeMs = System.currentTimeMillis() - startTime;
@@ -62,6 +70,18 @@ public class WebClientApiExecutionService implements ApiExecutionService {
 
             // Kiểm tra assertions
             evaluateAssertions(monitor, uptimeLogs);
+
+        } catch (UrlSecurityValidationException secEx) {
+            // Chặn kết nối do vi phạm bảo mật (SSRF / DNS Rebinding)
+            long responseTimeMs = System.currentTimeMillis() - startTime;
+            log.warn("[Security] Chặn monitor '{}' vì URL vi phạm bảo mật: {}", monitor.getName(), secEx.getMessage());
+            uptimeLogs.setResponseTimeMs((int) responseTimeMs);
+            uptimeLogs.setIsUp(false);
+            uptimeLogs.setErrorType("SECURITY_VIOLATION");
+            uptimeLogs.setErrorMessage("Chặn kết nối: Địa chỉ URL hoặc IP của mục tiêu không an toàn (SSRF). " + secEx.getMessage());
+            uptimeLogs.setAssertionStatus("FAILED");
+            uptimeLogs.setAssertionMessage("Target URL violates security policies.");
+            uptimeLogs.setEventType(MonitorEventType.API_FAILURE);
 
         } catch (WebClientResponseException ex) {
             // Server trả về HTTP error (4xx, 5xx)
