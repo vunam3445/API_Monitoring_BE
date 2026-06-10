@@ -3,10 +3,17 @@ package com.example.demo.modules.alert.services;
 import com.example.demo.common.cache.ICacheService;
 import com.example.demo.modules.alert.entities.Incident;
 import com.example.demo.modules.alert.enums.IncidentStatus;
+import com.example.demo.modules.alert.enums.IncidentSeverity;
 import com.example.demo.modules.alert.repositories.IncidentRepository;
 import com.example.demo.modules.monitor.entities.Monitor;
 import com.example.demo.modules.uptimeLogs.entities.UptimeLogs;
 import com.example.demo.modules.user.repositories.UserSettingRepository;
+import com.example.demo.modules.user.repositories.UserRepository;
+import com.example.demo.modules.user.entities.User;
+import com.example.demo.modules.notification.services.NotificationService;
+import com.example.demo.modules.notification.dto.SendNotificationRequest;
+import com.example.demo.modules.notification.enums.NotificationLevel;
+import com.example.demo.modules.notification.enums.TargetType;
 import com.example.demo.modules.dashboard.services.DashboardCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +37,8 @@ public class IncidentService implements IIncidentService {
     private final AlertNotificationDispatcher notificationDispatcher;
     private final UserSettingRepository userSettingRepository;
     private final DashboardCacheService dashboardCacheService;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -95,6 +104,7 @@ public class IncidentService implements IIncidentService {
             if (!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
                 log.warn("Transaction synchronization is NOT active. Falling back to immediate dispatch.");
                 notificationDispatcher.dispatch(saved);
+                triggerWebNotification(saved);
             } else {
                 log.info("Registering afterCommit synchronization for incident {}", saved.getId());
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
@@ -103,6 +113,7 @@ public class IncidentService implements IIncidentService {
                         public void afterCommit() {
                             log.info("Transaction COMMITTED. Dispatching notification for incident {}", saved.getId());
                             notificationDispatcher.dispatch(saved);
+                            triggerWebNotification(saved);
                         }
                     }
                 );
@@ -176,6 +187,7 @@ public class IncidentService implements IIncidentService {
             if (!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
                 log.warn("Transaction synchronization NOT active for resolution. immediate dispatch.");
                 notificationDispatcher.dispatch(i);
+                triggerWebNotification(i);
             } else {
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
                     new org.springframework.transaction.support.TransactionSynchronization() {
@@ -183,6 +195,7 @@ public class IncidentService implements IIncidentService {
                         public void afterCommit() {
                             log.info("Transaction COMMITTED. Dispatching recovery notification for incident {}", i.getId());
                             notificationDispatcher.dispatch(i);
+                            triggerWebNotification(i);
                         }
                     }
                 );
@@ -253,6 +266,54 @@ public class IncidentService implements IIncidentService {
     @Override
     public Optional<Incident> findById(UUID id) {
         return incidentRepository.findById(id);
+    }
+
+    private void triggerWebNotification(Incident incident) {
+        try {
+            UUID userId = incident.getMonitor().getUserId();
+            String userEmail = incident.getMonitor().getUser() != null 
+                    ? incident.getMonitor().getUser().getEmail() 
+                    : userRepository.findById(userId).map(User::getEmail).orElse(null);
+
+            if (userEmail == null) {
+                log.warn("[IncidentService] Cannot find email for userId={} to send web notification", userId);
+                return;
+            }
+
+            SendNotificationRequest request = new SendNotificationRequest();
+            if (incident.getStatus() == IncidentStatus.RESOLVED) {
+                request.setTitle("🟢 API đã phục hồi: " + incident.getMonitor().getName());
+                request.setContent(String.format("API '%s' (%s) đã hoạt động bình thường trở lại. Status code: %d.",
+                        incident.getMonitor().getName(),
+                        incident.getMonitor().getUrl(),
+                        incident.getLastStatusCode() != null ? incident.getLastStatusCode() : 200));
+                request.setLevel(NotificationLevel.INFO);
+            } else {
+                String severitySymbol = incident.getSeverity() == IncidentSeverity.CRITICAL ? "🔴" : "⚠️";
+                request.setTitle(String.format("%s Cảnh báo API: %s %s",
+                        severitySymbol,
+                        incident.getMonitor().getName(),
+                        incident.getType()));
+                request.setContent(String.format("Phát hiện lỗi tại API '%s' (%s). Trạng thái: %s. Nội dung: %s.",
+                        incident.getMonitor().getName(),
+                        incident.getMonitor().getUrl(),
+                        incident.getSeverity(),
+                        incident.getMessage()));
+                request.setLevel(incident.getSeverity() == IncidentSeverity.CRITICAL 
+                        ? NotificationLevel.SYSTEM 
+                        : NotificationLevel.WARNING);
+            }
+
+            request.setTargetType(TargetType.SINGLE);
+            request.setTargetValue(userEmail);
+            request.setSendWeb(true);
+            request.setSendEmail(false); // Email đã được strategy khác gửi riêng
+
+            notificationService.sendNotification(request);
+            log.info("[IncidentService] Triggered web notification for userId={}", userId);
+        } catch (Exception e) {
+            log.error("[IncidentService] Failed to send web notification: {}", e.getMessage());
+        }
     }
 
     private void invalidateCache(UUID userId, UUID incidentId) {
