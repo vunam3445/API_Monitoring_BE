@@ -101,10 +101,11 @@ public class IncidentService implements IIncidentService {
         log.info("Incident {}: shouldNotify={}", saved.getId(), notify);
 
         if (notify) {
+            SendNotificationRequest webNotificationRequest = buildWebNotificationRequest(saved);
             if (!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
                 log.warn("Transaction synchronization is NOT active. Falling back to immediate dispatch.");
                 notificationDispatcher.dispatch(saved);
-                triggerWebNotification(saved);
+                sendWebNotification(webNotificationRequest);
             } else {
                 log.info("Registering afterCommit synchronization for incident {}", saved.getId());
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
@@ -113,7 +114,7 @@ public class IncidentService implements IIncidentService {
                         public void afterCommit() {
                             log.info("Transaction COMMITTED. Dispatching notification for incident {}", saved.getId());
                             notificationDispatcher.dispatch(saved);
-                            triggerWebNotification(saved);
+                            sendWebNotification(webNotificationRequest);
                         }
                     }
                 );
@@ -183,11 +184,12 @@ public class IncidentService implements IIncidentService {
             log.info("Incident resolved: monitor {} recovered from {} at {}", monitor.getName(), i.getType(),
                     i.getResolvedAt());
 
+            SendNotificationRequest webNotificationRequest = buildWebNotificationRequest(i);
             // Trigger recovery notification
             if (!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
                 log.warn("Transaction synchronization NOT active for resolution. immediate dispatch.");
                 notificationDispatcher.dispatch(i);
-                triggerWebNotification(i);
+                sendWebNotification(webNotificationRequest);
             } else {
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
                     new org.springframework.transaction.support.TransactionSynchronization() {
@@ -195,7 +197,7 @@ public class IncidentService implements IIncidentService {
                         public void afterCommit() {
                             log.info("Transaction COMMITTED. Dispatching recovery notification for incident {}", i.getId());
                             notificationDispatcher.dispatch(i);
-                            triggerWebNotification(i);
+                            sendWebNotification(webNotificationRequest);
                         }
                     }
                 );
@@ -268,16 +270,14 @@ public class IncidentService implements IIncidentService {
         return incidentRepository.findById(id);
     }
 
-    private void triggerWebNotification(Incident incident) {
+    private SendNotificationRequest buildWebNotificationRequest(Incident incident) {
         try {
             UUID userId = incident.getMonitor().getUserId();
-            String userEmail = incident.getMonitor().getUser() != null 
-                    ? incident.getMonitor().getUser().getEmail() 
-                    : userRepository.findById(userId).map(User::getEmail).orElse(null);
+            String userEmail = userRepository.findById(userId).map(User::getEmail).orElse(null);
 
             if (userEmail == null) {
-                log.warn("[IncidentService] Cannot find email for userId={} to send web notification", userId);
-                return;
+                log.warn("[IncidentService] Cannot find email for userId={} to build web notification", userId);
+                return null;
             }
 
             SendNotificationRequest request = new SendNotificationRequest();
@@ -308,9 +308,20 @@ public class IncidentService implements IIncidentService {
             request.setTargetValue(userEmail);
             request.setSendWeb(true);
             request.setSendEmail(false); // Email đã được strategy khác gửi riêng
+            return request;
+        } catch (Exception e) {
+            log.error("[IncidentService] Failed to build web notification request: {}", e.getMessage(), e);
+            return null;
+        }
+    }
 
+    private void sendWebNotification(SendNotificationRequest request) {
+        if (request == null) {
+            return;
+        }
+        try {
             notificationService.sendNotification(request);
-            log.info("[IncidentService] Triggered web notification for userId={}", userId);
+            log.info("[IncidentService] Triggered web notification for userEmail={}", request.getTargetValue());
         } catch (Exception e) {
             log.error("[IncidentService] Failed to send web notification: {}", e.getMessage());
         }
