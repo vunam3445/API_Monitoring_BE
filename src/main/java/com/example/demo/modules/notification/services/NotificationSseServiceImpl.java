@@ -1,7 +1,10 @@
 package com.example.demo.modules.notification.services;
 
 import com.example.demo.modules.notification.dto.UserNotificationResponse;
+import com.example.demo.modules.notification.dto.SseNotificationPayload;
+import com.example.demo.common.config.RedisPubSubConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -18,6 +21,11 @@ public class NotificationSseServiceImpl implements NotificationSseService {
     private static final long SSE_TIMEOUT = 1800000L;
     
     private final Map<UUID, SseEmitter> emitters = new ConcurrentHashMap<>();
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    public NotificationSseServiceImpl(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     @Override
     public SseEmitter subscribe(UUID userId) {
@@ -58,6 +66,13 @@ public class NotificationSseServiceImpl implements NotificationSseService {
 
     @Override
     public void sendNotification(UUID userId, UserNotificationResponse notification) {
+        log.info("[SSE] Publishing notification to Redis channel for userId={}", userId);
+        SseNotificationPayload payload = new SseNotificationPayload(userId, notification);
+        redisTemplate.convertAndSend(RedisPubSubConfig.SSE_CHANNEL, payload);
+    }
+
+    @Override
+    public void sendNotificationLocal(UUID userId, UserNotificationResponse notification) {
         SseEmitter emitter = emitters.get(userId);
         if (emitter != null) {
             try {
@@ -65,14 +80,14 @@ public class NotificationSseServiceImpl implements NotificationSseService {
                 emitter.send(SseEmitter.event()
                         .name("notification")
                         .data(notification));
-                log.info("[SSE] Đã đẩy thông báo tới userId={}", userId);
+                log.info("[SSE] [Local] Đã đẩy thông báo tới userId={}", userId);
             } catch (IOException e) {
-                log.warn("[SSE] Lỗi khi đẩy tin tới userId={}, tự động đóng kết nối: {}", userId, e.getMessage());
+                log.warn("[SSE] [Local] Lỗi khi đẩy tin tới userId={}, tự động đóng kết nối: {}", userId, e.getMessage());
                 emitters.remove(userId);
                 emitter.completeWithError(e);
             }
         } else {
-            log.debug("[SSE] Người dùng userId={} đang offline, không gửi SSE", userId);
+            log.debug("[SSE] [Local] Người dùng userId={} đang offline trên instance này", userId);
         }
     }
 

@@ -16,6 +16,11 @@ public interface NotificationSseService {
     void sendNotification(UUID userId, UserNotificationResponse notification);
 
     /**
+     * Đẩy thông báo cục bộ qua SseEmitter đang kết nối trực tiếp với instance này.
+     */
+    void sendNotificationLocal(UUID userId, UserNotificationResponse notification);
+
+    /**
      * Ngắt kết nối toàn bộ hệ thống (dọn dẹp).
      */
     void closeAll();
