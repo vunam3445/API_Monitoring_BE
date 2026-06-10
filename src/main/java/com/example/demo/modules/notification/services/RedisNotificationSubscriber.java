@@ -1,7 +1,10 @@
 package com.example.demo.modules.notification.services;
 
 import com.example.demo.modules.notification.dto.SseNotificationPayload;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
@@ -15,7 +18,9 @@ import java.io.IOException;
 @Slf4j
 public class RedisNotificationSubscriber implements MessageListener {
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .findAndRegisterModules()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final NotificationSseService notificationSseService;
 
     @Override

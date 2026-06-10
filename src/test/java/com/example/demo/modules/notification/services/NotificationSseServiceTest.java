@@ -19,6 +19,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -80,5 +81,29 @@ public class NotificationSseServiceTest {
 
         // Assert
         verify(emitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    void testRedisNotificationSubscriber_deserializesMessageWithClassAttribute() {
+        // Arrange
+        NotificationSseService sseServiceMock = mock(NotificationSseService.class);
+        RedisNotificationSubscriber subscriber = new RedisNotificationSubscriber(sseServiceMock);
+
+        // JSON matching what redisTemplate outputs with default typing
+        String json = "{\"@class\":\"com.example.demo.modules.notification.dto.SseNotificationPayload\"," +
+                "\"userId\":\"f7b8115a-1535-423f-a61c-6a9f325df453\"," +
+                "\"notification\":{\"id\":null,\"notificationId\":null,\"title\":\"Test title\",\"content\":\"Test content\",\"level\":\"INFO\",\"isRead\":false,\"readAt\":null,\"createdAt\":null}}";
+
+        org.springframework.data.redis.connection.Message message = mock(org.springframework.data.redis.connection.Message.class);
+        when(message.getBody()).thenReturn(json.getBytes());
+
+        // Act
+        subscriber.onMessage(message, null);
+
+        // Assert
+        verify(sseServiceMock, times(1)).sendNotificationLocal(
+                eq(UUID.fromString("f7b8115a-1535-423f-a61c-6a9f325df453")),
+                argThat(notif -> "Test title".equals(notif.getTitle()) && "Test content".equals(notif.getContent()))
+        );
     }
 }
