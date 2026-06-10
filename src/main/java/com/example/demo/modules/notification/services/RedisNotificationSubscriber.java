@@ -15,7 +15,7 @@ import java.io.IOException;
 @Slf4j
 public class RedisNotificationSubscriber implements MessageListener {
 
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final NotificationSseService notificationSseService;
 
     @Override
