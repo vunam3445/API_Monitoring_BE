@@ -87,7 +87,7 @@ public class NotificationSseServiceImpl implements NotificationSseService {
                 emitter.completeWithError(e);
             }
         } else {
-            log.debug("[SSE] [Local] Người dùng userId={} đang offline trên instance này", userId);
+            log.info("[SSE] [Local] userId={} không có kết nối SSE trên instance này. Tổng emitters hiện tại: {}", userId, emitters.size());
         }
     }
 

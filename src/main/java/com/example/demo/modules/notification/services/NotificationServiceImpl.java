@@ -30,10 +30,11 @@ public class NotificationServiceImpl implements NotificationService {
 
     /**
      * PHA 1: Lưu bản ghi gốc vào DB, sau đó đẩy event vào RabbitMQ.
-     * Trả về kết quả ngay lập tức mà không chờ đợi email hay web delivery.
+     * Dùng REQUIRES_NEW để tạo transaction độc lập, tránh vấn đề nested afterCommit
+     * khi được gọi từ bên trong afterCommit() của transaction cha (e.g. IncidentService).
      */
     @Override
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public NotificationResponse sendNotification(SendNotificationRequest request) {
         // 1. Lưu thông báo gốc vào database
         Notification notification = Notification.builder()
@@ -49,8 +50,10 @@ public class NotificationServiceImpl implements NotificationService {
         notification = notificationRepository.save(notification);
         log.info("[NotificationService] Đã lưu thông báo id={}, title='{}'", notification.getId(), notification.getTitle());
 
-        // 2. Đẩy sự kiện vào RabbitMQ để Consumer xử lý bất đồng bộ
-        NotificationBroadcastEvent event = new NotificationBroadcastEvent(
+        // 2. Đẩy sự kiện vào RabbitMQ sau khi REQUIRES_NEW transaction này commit
+        //    Đây là transaction sạch (không lồng trong afterCommit của transaction khác),
+        //    nên afterCommit của transaction này sẽ luôn được kích hoạt đúng cách.
+        final NotificationBroadcastEvent event = new NotificationBroadcastEvent(
                 notification.getId(),
                 notification.getTitle(),
                 notification.getContent(),
@@ -61,23 +64,23 @@ public class NotificationServiceImpl implements NotificationService {
                 notification.isSendEmail()
         );
 
-        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
-            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+            new org.springframework.transaction.support.TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
                         rabbitTemplate.convertAndSend(NotificationMQConfig.BROADCAST_QUEUE, event);
-                        log.info("[NotificationService] Đã đẩy sự kiện vào queue sau khi Transaction commit thành công: {}", NotificationMQConfig.BROADCAST_QUEUE);
+                        log.info("[NotificationService] Đã đẩy sự kiện vào queue sau khi commit: {}", NotificationMQConfig.BROADCAST_QUEUE);
+                    } catch (Exception e) {
+                        log.error("[NotificationService] Lỗi đẩy sự kiện vào RabbitMQ: {}", e.getMessage());
                     }
                 }
-            );
-        } else {
-            rabbitTemplate.convertAndSend(NotificationMQConfig.BROADCAST_QUEUE, event);
-            log.info("[NotificationService] Không có Transaction hoạt động. Đã đẩy sự kiện vào queue lập tức: {}", NotificationMQConfig.BROADCAST_QUEUE);
-        }
+            }
+        );
 
         return NotificationResponse.from(notification);
     }
+
 
     @Override
     public Page<NotificationResponse> getAdminHistory(Pageable pageable) {
