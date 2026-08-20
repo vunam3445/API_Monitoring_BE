@@ -52,8 +52,13 @@ public class MonitorWorker {
     private final IIncidentService incidentService;
     private final DashboardCacheService dashboardCacheService;
     private final com.example.demo.modules.system.services.ISystemSettingService systemSettingService;
+    private final com.example.demo.modules.system.services.ActiveWorkerRegistry activeWorkerRegistry;
 
-    @RabbitListener(queues = MonitorMQConfig.QUEUE_NAME)
+    @RabbitListener(
+            id = "monitorWorkerContainer",
+            queues = MonitorMQConfig.QUEUE_NAME,
+            concurrency = "${app.rabbitmq.concurrency.monitor}"
+    )
     public void processMonitorJob(MonitorExecutionMessage message) {
         // 0. Kiểm tra trạng thái Global Pause
         if (systemSettingService.isGlobalPaused()) {
@@ -61,6 +66,7 @@ public class MonitorWorker {
             return;
         }
 
+        activeWorkerRegistry.increment();
         String monitorId = message.getMonitorId();
         log.info("Received execution job for monitor: {} (scheduled at: {})",
                 monitorId, message.getScheduledAt());
@@ -113,7 +119,8 @@ public class MonitorWorker {
         } catch (Exception e) {
             log.error("Error processing monitor job: {}", monitorId, e);
         } finally {
-            // 5. Luôn giải phóng lock sau khi xử lý xong
+            // Luôn giải phóng lock và cập nhật Busy Workers counter sau khi xử lý xong
+            activeWorkerRegistry.decrement();
             lockService.unlock(monitorId);
         }
     }

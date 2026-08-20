@@ -38,6 +38,10 @@ import java.util.stream.Collectors;
 import com.example.demo.modules.user.dto.PlanUserStatisticItem;
 
 import com.example.demo.modules.subscription.enums.SubscriptionStatus;
+import com.example.demo.modules.notification.services.NotificationService;
+import com.example.demo.modules.notification.dto.SendNotificationRequest;
+import com.example.demo.modules.notification.enums.NotificationLevel;
+import com.example.demo.modules.notification.enums.TargetType;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +54,7 @@ public class ManagerUserService implements IManagerUserService {
     private final ICacheService cacheService;
     private final ISubscriptionService subscriptionService;
     private final MonitorRepository monitorRepository;
+    private final NotificationService notificationService;
 
 
     private static final String CACHE_ADMIN_USERS = "api-monitoring:admin:users:list";
@@ -112,10 +117,28 @@ public class ManagerUserService implements IManagerUserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("Không tìm thấy user"));
         user.setStatus(UserStatus.SUSPENDED);
+        user.setRefreshToken(null);
+        user.setRefreshTokenExpiry(null);
         userRepository.saveAndFlush(user);
 
         // Xóa cache danh sách admin và danh sách người dùng chung
         evictUserCaches(userId);
+
+        // Gửi thông báo bất đồng bộ qua RabbitMQ (SYSTEM level để buộc gửi Email)
+        try {
+            SendNotificationRequest request = new SendNotificationRequest();
+            request.setTitle("Tài khoản của bạn đã bị khóa bởi Quản trị viên");
+            request.setContent("Tài khoản của bạn đã bị khóa bởi Admin hệ thống. Vui lòng liên hệ với bộ phận hỗ trợ để biết thêm chi tiết.");
+            request.setTargetType(TargetType.SINGLE);
+            request.setTargetValue(user.getEmail());
+            request.setLevel(NotificationLevel.SYSTEM);
+            request.setSendWeb(false); // Đã khóa tài khoản không cần đẩy SSE Web
+            request.setSendEmail(true);
+            notificationService.sendNotification(request);
+            log.info("[ManagerUserService] Đã kích hoạt gửi thông báo khóa user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("[ManagerUserService] Lỗi kích hoạt gửi thông báo khóa user: {}", e.getMessage());
+        }
 
         return mapper.toUserAdminResponse(user);
     }
@@ -130,6 +153,22 @@ public class ManagerUserService implements IManagerUserService {
 
         // Xóa cache danh sách admin và danh sách người dùng chung
         evictUserCaches(userId);
+
+        // Gửi thông báo bất đồng bộ qua RabbitMQ khi kích hoạt lại tài khoản
+        try {
+            SendNotificationRequest request = new SendNotificationRequest();
+            request.setTitle("Tài khoản của bạn đã được kích hoạt trở lại");
+            request.setContent("Tài khoản của bạn đã được kích hoạt hoạt động trở lại bởi Admin. Bạn đã có thể đăng nhập và sử dụng hệ thống bình thường.");
+            request.setTargetType(TargetType.SINGLE);
+            request.setTargetValue(user.getEmail());
+            request.setLevel(NotificationLevel.SYSTEM);
+            request.setSendWeb(true);
+            request.setSendEmail(true);
+            notificationService.sendNotification(request);
+            log.info("[ManagerUserService] Đã kích hoạt gửi thông báo kích hoạt lại user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("[ManagerUserService] Lỗi kích hoạt gửi thông báo kích hoạt lại user: {}", e.getMessage());
+        }
 
         return mapper.toUserAdminResponse(user);
     }

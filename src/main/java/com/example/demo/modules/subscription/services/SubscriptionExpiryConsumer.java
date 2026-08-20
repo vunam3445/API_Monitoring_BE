@@ -14,10 +14,15 @@ import org.springframework.stereotype.Service;
 public class SubscriptionExpiryConsumer {
 
     private final EmailSenderService emailSenderService;
+    private final com.example.demo.modules.system.services.ActiveWorkerRegistry activeWorkerRegistry;
 
-    @RabbitListener(queues = SubscriptionExpiryMQConfig.EXPIRY_QUEUE)
+    @RabbitListener(
+            queues = SubscriptionExpiryMQConfig.EXPIRY_QUEUE,
+            concurrency = "${app.rabbitmq.concurrency.expiry}"
+    )
     public void consumeExpiryEvent(SubscriptionExpiryEvent event) {
         log.info("[SubscriptionExpiryConsumer] Nhận sự kiện nhắc gia hạn gửi cho email: {}", event.userEmail());
+        activeWorkerRegistry.increment();
         try {
             emailSenderService.sendSubscriptionExpiryEmail(
                     event.userEmail(),
@@ -29,6 +34,8 @@ public class SubscriptionExpiryConsumer {
         } catch (Exception e) {
             log.error("[SubscriptionExpiryConsumer] Lỗi khi xử lý gửi email cho {}: {}", event.userEmail(), e.getMessage());
             throw e; // Throw lỗi để kích hoạt cơ chế retry của RabbitMQ
+        } finally {
+            activeWorkerRegistry.decrement();
         }
     }
 }

@@ -22,6 +22,7 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
     private final RabbitListenerEndpointRegistry rabbitListenerEndpointRegistry;
     private final RabbitAdmin rabbitAdmin;
     private final DataSource dataSource;
+    private final ActiveWorkerRegistry activeWorkerRegistry;
 
     @Value("${spring.rabbitmq.listener.simple.concurrency:20}")
     private int workerConcurrency;
@@ -41,12 +42,18 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
     @Override
     public void toggleGlobalPause(boolean paused) {
         this.globalPaused = paused;
-        if (paused) {
-            rabbitListenerEndpointRegistry.stop();
-            log.info("Global execution paused (listeners stopped)");
+        MessageListenerContainer monitorContainer = 
+                rabbitListenerEndpointRegistry.getListenerContainer("monitorWorkerContainer");
+        if (monitorContainer != null) {
+            if (paused) {
+                monitorContainer.stop();
+                log.info("API Monitoring paused (monitor worker container stopped)");
+            } else {
+                monitorContainer.start();
+                log.info("API Monitoring resumed (monitor worker container started)");
+            }
         } else {
-            rabbitListenerEndpointRegistry.start();
-            log.info("Global execution resumed (listeners started)");
+            log.warn("Monitor worker container not found for toggling pause status");
         }
     }
 
@@ -57,24 +64,33 @@ public class AdminSystemServiceImpl implements IAdminSystemService {
 
     @Override
     public int getActiveWorkerCount() {
-        int active = 0;
-        try {
-            for (MessageListenerContainer container : rabbitListenerEndpointRegistry.getListenerContainers()) {
-                if (container instanceof SimpleMessageListenerContainer) {
-                    active += ((SimpleMessageListenerContainer) container).getActiveConsumerCount();
-                } else {
-                    active += container.isRunning() ? 1 : 0;
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to get active worker count", e);
-        }
-        return active;
+        // Trả về số Busy Threads thực tế từ registry thay vì đếm Alive Threads của Spring AMQP
+        return activeWorkerRegistry.getActiveCount();
     }
 
     @Override
     public int getTotalWorkerCount() {
-        return workerConcurrency;
+        try {
+            int total = 0;
+            for (MessageListenerContainer container : rabbitListenerEndpointRegistry.getListenerContainers()) {
+                if (container instanceof SimpleMessageListenerContainer) {
+                    try {
+                        java.lang.reflect.Field field = SimpleMessageListenerContainer.class.getDeclaredField("concurrentConsumers");
+                        field.setAccessible(true);
+                        total += (int) field.get(container);
+                    } catch (Exception e) {
+                        log.warn("Failed to reflect concurrentConsumers field, fallback to default", e);
+                        total += workerConcurrency;
+                    }
+                } else {
+                    total += 1;
+                }
+            }
+            return total > 0 ? total : workerConcurrency;
+        } catch (Exception e) {
+            log.warn("Failed to get total worker count", e);
+            return workerConcurrency;
+        }
     }
 
     @Override

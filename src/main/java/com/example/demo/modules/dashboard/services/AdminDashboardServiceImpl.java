@@ -234,7 +234,6 @@ public class AdminDashboardServiceImpl implements IAdminDashboardService {
     }
 
     @Override
-    @Cacheable(value = CACHE_ADMIN_DASHBOARD, key = "'v2:infrastructure'")
     public AdminInfrastructureResponse getInfrastructure() {
         int activeWorkers = adminSystemService.getActiveWorkerCount();
         int totalWorkers = adminSystemService.getTotalWorkerCount();

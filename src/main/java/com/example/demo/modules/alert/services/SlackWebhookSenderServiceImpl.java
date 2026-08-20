@@ -41,6 +41,11 @@ public class SlackWebhookSenderServiceImpl implements SlackWebhookSenderService 
         postToWebhook(webhookUrl, "This is a test notification from API Monitoring tool.");
     }
 
+    @Override
+    public void sendSlackMessage(String webhookUrl, String message) {
+        postToWebhook(webhookUrl, message);
+    }
+
     private void postToWebhook(String url, String text) {
         try {
             webClientBuilder.build()

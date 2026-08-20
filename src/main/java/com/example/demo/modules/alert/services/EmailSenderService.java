@@ -7,4 +7,5 @@ public interface EmailSenderService {
     void sendRecoveryEmail(String recipient, Incident incident);
     void sendTestEmail(String recipient);
     void sendSubscriptionExpiryEmail(String recipient, String userName, String planName, String expiryDate);
+    void sendNotificationEmail(String recipient, String title, String content, String level);
 }

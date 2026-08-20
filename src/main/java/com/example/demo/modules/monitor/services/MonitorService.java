@@ -12,12 +12,18 @@ import com.example.demo.modules.monitor.dto.UpdateApiRequest;
 import com.example.demo.common.exceptions.AuthenticationException;
 import com.example.demo.common.exceptions.ForbidenException;
 import com.example.demo.modules.user.entities.User;
+import com.example.demo.modules.notification.services.NotificationService;
+import com.example.demo.modules.notification.dto.SendNotificationRequest;
+import com.example.demo.modules.notification.enums.NotificationLevel;
+import com.example.demo.modules.notification.enums.TargetType;
+import lombok.extern.slf4j.Slf4j;
 
 import com.example.demo.modules.monitor.entities.Monitor;
 import com.example.demo.modules.monitor.mappers.MonitorMapper;
 import com.example.demo.modules.monitor.repositories.MonitorRepository;
 import com.example.demo.modules.monitor.lock.DistributedLockService;
 import com.example.demo.modules.monitor.messaging.MonitorProducer;
+import com.example.demo.common.security.UrlSecurityValidator;
 import com.example.demo.modules.subscription.entities.SubscriptionPlan;
 import com.example.demo.modules.user.repositories.UserRepository;
 import com.example.demo.modules.dashboard.services.DashboardCacheService;
@@ -40,6 +46,7 @@ import com.example.demo.modules.subscription.enums.SubscriptionStatus;
 import com.example.demo.modules.subscription.repositories.SubscriptionRepository;
 
 @Service
+@Slf4j
 public class MonitorService
         extends BaseService<Monitor, UUID, CreateApiRequest, UpdateApiRequest, ApiResponse>
         implements IMonitorService {
@@ -50,6 +57,8 @@ public class MonitorService
     private final UserRepository userRepository;
     private final DashboardCacheService dashboardCacheService;
     private final SubscriptionRepository subscriptionRepository;
+    private final NotificationService notificationService;
+    private final UrlSecurityValidator urlSecurityValidator;
 
     public MonitorService(
             MonitorRepository repository,
@@ -60,7 +69,9 @@ public class MonitorService
             UserRepository userRepository,
             DashboardCacheService dashboardCacheService,
             MonitorProducer monitorProducer,
-            SubscriptionRepository subscriptionRepository) {
+            SubscriptionRepository subscriptionRepository,
+            NotificationService notificationService,
+            UrlSecurityValidator urlSecurityValidator) {
         super(repository, mapper, cacheService);
         this.monitorRepository = repository;
         this.lockService = lockService;
@@ -69,6 +80,8 @@ public class MonitorService
         this.userRepository = userRepository;
         this.dashboardCacheService = dashboardCacheService;
         this.subscriptionRepository = subscriptionRepository;
+        this.notificationService = notificationService;
+        this.urlSecurityValidator = urlSecurityValidator;
     }
 
     @Override
@@ -76,6 +89,32 @@ public class MonitorService
     public void delete(UUID id) {
         Monitor monitor = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Monitor: " + id));
+
+        // Kiểm tra xem có phải Admin xóa monitor của user khác hay không
+        try {
+            User currentUser = iSecurityContextService.getCurrentUser().orElse(null);
+            if (currentUser != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().name())
+                    && !currentUser.getId().equals(monitor.getUserId())) {
+                User owner = userRepository.findById(monitor.getUserId()).orElse(null);
+                if (owner != null) {
+                    SendNotificationRequest request = new SendNotificationRequest();
+                    request.setTitle("Monitor của bạn đã bị xóa bởi Quản trị viên");
+                    request.setContent(
+                            String.format("Monitor '%s' (URL: %s) của bạn đã bị xóa khỏi hệ thống bởi Admin.",
+                                    monitor.getName(), monitor.getUrl()));
+                    request.setTargetType(TargetType.SINGLE);
+                    request.setTargetValue(owner.getEmail());
+                    request.setLevel(NotificationLevel.WARNING);
+                    request.setSendWeb(true);
+                    request.setSendEmail(true);
+                    notificationService.sendNotification(request);
+                    log.info("[MonitorService] Đã kích hoạt gửi thông báo xóa monitor '{}' tới {}", monitor.getName(),
+                            owner.getEmail());
+                }
+            }
+        } catch (Exception e) {
+            log.error("[MonitorService] Lỗi gửi thông báo khi admin xóa monitor: {}", e.getMessage());
+        }
 
         // Gọi lệnh delete trên instance sẽ kích hoạt JPA Cascade đã cấu hình ở Entity
         repository.delete(monitor);
@@ -164,11 +203,13 @@ public class MonitorService
                 .orElseThrow(() -> new AuthenticationException("Không tìm thấy thông tin người dùng."));
 
         // Lấy gói đăng ký đang hoạt động của người dùng
-        Subscription activeSubscription = subscriptionRepository.findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE)
+        Subscription activeSubscription = subscriptionRepository
+                .findByUserIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE)
                 .orElseThrow(() -> new ForbidenException("Bạn không có gói đăng ký nào đang hoạt động."));
 
         // 1. Kiểm tra thời gian hết hạn của gói
-        if (activeSubscription.getCurrentPeriodEnd() != null && activeSubscription.getCurrentPeriodEnd().isBefore(LocalDateTime.now())) {
+        if (activeSubscription.getCurrentPeriodEnd() != null
+                && activeSubscription.getCurrentPeriodEnd().isBefore(LocalDateTime.now())) {
             throw new ForbidenException("Gói đăng ký của bạn đã hết hạn, vui lòng gia hạn để tiếp tục sử dụng.");
         }
 
@@ -181,11 +222,15 @@ public class MonitorService
 
         // 3. Kiểm tra khoảng thời gian check tối thiểu của gói
         if (request.getCheckInterval() < activeSubscription.getMinInterval()) {
-            throw new ForbidenException("Gói " + activeSubscription.getPlanName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
-                    + activeSubscription.getMinInterval() + " giây.");
+            throw new ForbidenException(
+                    "Gói " + activeSubscription.getPlanName() + " chỉ hỗ trợ khoảng thời gian kiểm tra tối thiểu là "
+                            + activeSubscription.getMinInterval() + " giây.");
         }
 
         // 3. Tạo mới monitor
+        // Kiểm tra CRLF injection trong headers và query params
+        validateMonitorParameters(request.getHeaders(), request.getQueryParams());
+
         Monitor monitor = mapper.toEntity(request);
         monitor.setUserId(user.getId());
 
@@ -196,5 +241,29 @@ public class MonitorService
         dashboardCacheService.clearUserDashboardCache(user.getId());
 
         return mapper.toResponse(savedMonitor);
+    }
+
+    /**
+     * Kiểm tra CRLF Injection trong headers và query parameters.
+     * Hàm này bảo vệ thêm một lớp nữa sau khi @SafeUrl đã kiểm tra URL.
+     */
+    private void validateMonitorParameters(java.util.List<java.util.Map<String, String>> headers,
+                                            java.util.List<java.util.Map<String, String>> queryParams) {
+        if (headers != null) {
+            for (java.util.Map<String, String> header : headers) {
+                for (java.util.Map.Entry<String, String> entry : header.entrySet()) {
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getKey());
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getValue());
+                }
+            }
+        }
+        if (queryParams != null) {
+            for (java.util.Map<String, String> param : queryParams) {
+                for (java.util.Map.Entry<String, String> entry : param.entrySet()) {
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getKey());
+                    urlSecurityValidator.validateNoCrlfInjection(entry.getValue());
+                }
+            }
+        }
     }
 }

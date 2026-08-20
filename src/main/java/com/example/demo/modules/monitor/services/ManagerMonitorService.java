@@ -18,6 +18,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import com.example.demo.common.base.RestPageImpl;
 import org.springframework.cache.annotation.Cacheable;
+import lombok.extern.slf4j.Slf4j;
+import com.example.demo.modules.notification.services.NotificationService;
+import com.example.demo.modules.notification.dto.SendNotificationRequest;
+import com.example.demo.modules.notification.enums.NotificationLevel;
+import com.example.demo.modules.notification.enums.TargetType;
 
 import org.springframework.stereotype.Service;
 
@@ -30,6 +35,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ManagerMonitorService implements IManagerMonitorService {
 
     private final MonitorRepository monitorRepository;
@@ -37,6 +43,7 @@ public class ManagerMonitorService implements IManagerMonitorService {
     private final UptimeLogsRepository uptimeLogsRepository;
     private final UserRepository userRepository;
     private final ICacheService cacheService;
+    private final NotificationService notificationService;
 
     @org.springframework.beans.factory.annotation.Value("${spring.rabbitmq.listener.simple.concurrency:20}")
     private int workerConcurrency;
@@ -149,8 +156,35 @@ public class ManagerMonitorService implements IManagerMonitorService {
     public Boolean blockMonitor(UUID monitorId) {
         Monitor m = monitorRepository.findById(monitorId)
                 .orElseThrow(() -> new MonitorNotFoundException("Không tìm thấy monitor!"));
-        m.setIsBlock(!m.getIsBlock());
+        
+        boolean willBeBlocked = !m.getIsBlock();
+        m.setIsBlock(willBeBlocked);
         monitorRepository.save(m);
+
+        // Gửi thông báo bất đồng bộ qua RabbitMQ tới chủ sở hữu monitor
+        try {
+            User owner = userRepository.findById(m.getUserId()).orElse(null);
+            if (owner != null) {
+                SendNotificationRequest request = new SendNotificationRequest();
+                if (willBeBlocked) {
+                    request.setTitle("Monitor của bạn đã bị khóa bởi Quản trị viên");
+                    request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã bị khóa bởi Admin hệ thống.", m.getName(), m.getUrl()));
+                    request.setLevel(NotificationLevel.WARNING);
+                } else {
+                    request.setTitle("Monitor của bạn đã được mở khóa bởi Quản trị viên");
+                    request.setContent(String.format("Monitor '%s' (URL: %s) của bạn đã được mở khóa hoạt động trở lại bởi Admin hệ thống.", m.getName(), m.getUrl()));
+                    request.setLevel(NotificationLevel.INFO);
+                }
+                request.setTargetType(TargetType.SINGLE);
+                request.setTargetValue(owner.getEmail());
+                request.setSendWeb(true);
+                request.setSendEmail(true);
+                notificationService.sendNotification(request);
+                log.info("[ManagerMonitorService] Đã kích hoạt gửi thông báo trạng thái monitor (block={}) tới {}", willBeBlocked, owner.getEmail());
+            }
+        } catch (Exception e) {
+            log.error("[ManagerMonitorService] Lỗi gửi thông báo trạng thái monitor: {}", e.getMessage());
+        }
 
         // Clear caches
         cacheService.evictByPrefix("api-monitoring:api:list::");
